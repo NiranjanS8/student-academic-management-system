@@ -274,6 +274,84 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.designation").value("Senior Lecturer"));
     }
 
+    @Test
+    void adminCanViewListAndUpdateStudentProfiles() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student2",
+                                  "email": "student2@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-002",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(
+                                department.getId(),
+                                program.getId(),
+                                term.getId(),
+                                section.getId()
+                        )))
+                .andExpect(status().isOk());
+
+        Long studentId = studentRepository.findAll().stream()
+                .filter(student -> "STU-002".equals(student.getStudentCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(get("/api/v1/admin/users/students/{studentId}", studentId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.studentCode").value("STU-002"))
+                .andExpect(jsonPath("$.data.academicStatus").value("ACTIVE"));
+
+        mockMvc.perform(get("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("departmentId", String.valueOf(department.getId()))
+                        .param("programId", String.valueOf(program.getId()))
+                        .param("sectionId", String.valueOf(section.getId()))
+                        .param("query", "student2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].studentCode").value("STU-002"));
+
+        mockMvc.perform(put("/api/v1/admin/users/students/{studentId}", studentId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student2-updated",
+                                  "email": "student2-updated@sams.local",
+                                  "studentCode": "STU-002A",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ON_HOLD",
+                                  "accountStatus": "SUSPENDED",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(
+                                department.getId(),
+                                program.getId(),
+                                term.getId(),
+                                section.getId()
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("student2-updated"))
+                .andExpect(jsonPath("$.data.studentCode").value("STU-002A"))
+                .andExpect(jsonPath("$.data.academicStatus").value("ON_HOLD"))
+                .andExpect(jsonPath("$.data.accountStatus").value("SUSPENDED"));
+    }
+
     private String extractAccessToken() throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
