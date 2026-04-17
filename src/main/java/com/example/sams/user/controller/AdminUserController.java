@@ -3,9 +3,12 @@ package com.example.sams.user.controller;
 import com.example.sams.common.api.ApiResponse;
 import com.example.sams.user.dto.CreateStudentRequest;
 import com.example.sams.user.dto.CreateTeacherRequest;
+import com.example.sams.user.dto.StudentProfileResponse;
 import com.example.sams.user.dto.TeacherProfileResponse;
+import com.example.sams.user.dto.UpdateStudentRequest;
 import com.example.sams.user.dto.UpdateTeacherRequest;
 import com.example.sams.user.dto.UserProvisionResponse;
+import com.example.sams.user.service.StudentAdministrationService;
 import com.example.sams.user.service.TeacherAdministrationService;
 import com.example.sams.user.service.UserProvisioningService;
 import jakarta.validation.Valid;
@@ -28,13 +31,16 @@ public class AdminUserController {
 
     private final UserProvisioningService userProvisioningService;
     private final TeacherAdministrationService teacherAdministrationService;
+    private final StudentAdministrationService studentAdministrationService;
 
     public AdminUserController(
             UserProvisioningService userProvisioningService,
-            TeacherAdministrationService teacherAdministrationService
+            TeacherAdministrationService teacherAdministrationService,
+            StudentAdministrationService studentAdministrationService
     ) {
         this.userProvisioningService = userProvisioningService;
         this.teacherAdministrationService = teacherAdministrationService;
+        this.studentAdministrationService = studentAdministrationService;
     }
 
     @PostMapping("/teachers")
@@ -74,6 +80,37 @@ public class AdminUserController {
             @Valid @RequestBody UpdateTeacherRequest request
     ) {
         return ApiResponse.success("Teacher updated successfully", teacherAdministrationService.updateTeacher(teacherId, request));
+    }
+
+    @GetMapping("/students/{studentId}")
+    public ApiResponse<StudentProfileResponse> getStudent(@PathVariable Long studentId) {
+        return ApiResponse.success("Student fetched successfully", studentAdministrationService.getStudentById(studentId));
+    }
+
+    @GetMapping("/students")
+    public ApiResponse<Page<StudentProfileResponse>> listStudents(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long programId,
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "studentCode") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Students fetched successfully",
+                studentAdministrationService.listStudents(departmentId, programId, sectionId, query, pageable)
+        );
+    }
+
+    @PutMapping("/students/{studentId}")
+    public ApiResponse<StudentProfileResponse> updateStudent(
+            @PathVariable Long studentId,
+            @Valid @RequestBody UpdateStudentRequest request
+    ) {
+        return ApiResponse.success("Student updated successfully", studentAdministrationService.updateStudent(studentId, request));
     }
 
     private Pageable buildPageable(int page, int size, String sortBy, String direction) {
