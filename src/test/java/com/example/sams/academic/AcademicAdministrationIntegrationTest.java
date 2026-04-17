@@ -8,6 +8,8 @@ import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
+import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
+import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.repository.RefreshTokenRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.Role;
@@ -66,6 +68,12 @@ class AcademicAdministrationIntegrationTest {
     private SectionRepository sectionRepository;
 
     @Autowired
+    private SubjectRepository subjectRepository;
+
+    @Autowired
+    private SubjectPrerequisiteRepository subjectPrerequisiteRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private Department department;
@@ -78,6 +86,8 @@ class AcademicAdministrationIntegrationTest {
         studentRepository.deleteAll();
         teacherRepository.deleteAll();
         userRepository.deleteAll();
+        subjectPrerequisiteRepository.deleteAll();
+        subjectRepository.deleteAll();
         sectionRepository.deleteAll();
         programRepository.deleteAll();
         departmentRepository.deleteAll();
@@ -257,6 +267,91 @@ class AcademicAdministrationIntegrationTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Academic term endDate cannot be before startDate"));
+    }
+
+    @Test
+    void adminCanManageSubjectsAndPrerequisites() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DBMS101",
+                                  "name": "Database Management Systems",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.code").value("DBMS101"))
+                .andExpect(jsonPath("$.data.active").value(true));
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DSA100",
+                                  "name": "Data Structures",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.code").value("DSA100"));
+
+        Long dbmsId = subjectRepository.findByCodeIgnoreCase("DBMS101").orElseThrow().getId();
+        Long dsaId = subjectRepository.findByCodeIgnoreCase("DSA100").orElseThrow().getId();
+
+        mockMvc.perform(put("/api/v1/admin/academic/subjects/{subjectId}", dbmsId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DBMS201",
+                                  "name": "Advanced DBMS",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": false
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.code").value("DBMS201"))
+                .andExpect(jsonPath("$.data.active").value(false));
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects/{subjectId}/prerequisites", dbmsId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "prerequisiteSubjectId": %d
+                                }
+                                """.formatted(dsaId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.prerequisites[0].code").value("DSA100"));
+
+        mockMvc.perform(get("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("departmentId", String.valueOf(department.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isArray());
+
+        mockMvc.perform(get("/api/v1/admin/academic/subjects/{subjectId}", dbmsId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.prerequisites[0].code").value("DSA100"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                        "/api/v1/admin/academic/subjects/{subjectId}/prerequisites/{prerequisiteSubjectId}",
+                        dbmsId,
+                        dsaId
+                ).header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.prerequisites").isEmpty());
     }
 
     private String extractAccessToken() throws Exception {

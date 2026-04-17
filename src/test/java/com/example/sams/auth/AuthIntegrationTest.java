@@ -8,6 +8,8 @@ import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
+import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
+import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.domain.RefreshToken;
 import com.example.sams.auth.repository.RefreshTokenRepository;
 import com.example.sams.user.domain.AccountStatus;
@@ -31,6 +33,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -67,6 +70,12 @@ class AuthIntegrationTest {
     private SectionRepository sectionRepository;
 
     @Autowired
+    private SubjectRepository subjectRepository;
+
+    @Autowired
+    private SubjectPrerequisiteRepository subjectPrerequisiteRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private Department department;
@@ -80,6 +89,8 @@ class AuthIntegrationTest {
         studentRepository.deleteAll();
         teacherRepository.deleteAll();
         userRepository.deleteAll();
+        subjectPrerequisiteRepository.deleteAll();
+        subjectRepository.deleteAll();
         sectionRepository.deleteAll();
         programRepository.deleteAll();
         departmentRepository.deleteAll();
@@ -203,6 +214,64 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.data.username").value("admin"))
                 .andExpect(jsonPath("$.data.role").value("ADMIN"))
                 .andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"));
+    }
+
+    @Test
+    void adminCanViewListAndUpdateTeacherProfiles() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher2",
+                                  "email": "teacher2@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-002",
+                                  "departmentId": %d,
+                                  "designation": "Lecturer"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-002".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(get("/api/v1/admin/users/teachers/{teacherId}", teacherId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.employeeCode").value("EMP-002"))
+                .andExpect(jsonPath("$.data.designation").value("Lecturer"));
+
+        mockMvc.perform(get("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("departmentId", String.valueOf(department.getId()))
+                        .param("query", "teacher2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].employeeCode").value("EMP-002"));
+
+        mockMvc.perform(put("/api/v1/admin/users/teachers/{teacherId}", teacherId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher2-updated",
+                                  "email": "teacher2-updated@sams.local",
+                                  "employeeCode": "EMP-002A",
+                                  "departmentId": %d,
+                                  "designation": "Senior Lecturer",
+                                  "accountStatus": "SUSPENDED"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("teacher2-updated"))
+                .andExpect(jsonPath("$.data.employeeCode").value("EMP-002A"))
+                .andExpect(jsonPath("$.data.accountStatus").value("SUSPENDED"))
+                .andExpect(jsonPath("$.data.designation").value("Senior Lecturer"));
     }
 
     private String extractAccessToken() throws Exception {
