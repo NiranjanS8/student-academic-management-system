@@ -13,11 +13,10 @@ import com.example.sams.academic.dto.SubjectRequest;
 import com.example.sams.academic.dto.SubjectResponse;
 import com.example.sams.academic.service.AcademicAdministrationService;
 import com.example.sams.common.api.ApiResponse;
+import com.example.sams.common.api.PageResponse;
+import com.example.sams.common.api.PaginationUtils;
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -57,14 +56,17 @@ public class AcademicAdministrationController {
     }
 
     @GetMapping("/departments")
-    public ApiResponse<Page<DepartmentResponse>> listDepartments(
+    public ApiResponse<PageResponse<DepartmentResponse>> listDepartments(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String direction
     ) {
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
-        return ApiResponse.success("Departments fetched successfully", academicAdministrationService.listDepartments(pageable));
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Departments fetched successfully",
+                PageResponse.from(academicAdministrationService.listDepartments(pageable))
+        );
     }
 
     @PostMapping("/programs")
@@ -86,17 +88,17 @@ public class AcademicAdministrationController {
     }
 
     @GetMapping("/programs")
-    public ApiResponse<Page<ProgramResponse>> listPrograms(
+    public ApiResponse<PageResponse<ProgramResponse>> listPrograms(
             @RequestParam(required = false) Long departmentId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String direction
     ) {
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
         return ApiResponse.success(
                 "Programs fetched successfully",
-                academicAdministrationService.listPrograms(departmentId, pageable)
+                PageResponse.from(academicAdministrationService.listPrograms(departmentId, pageable))
         );
     }
 
@@ -119,14 +121,17 @@ public class AcademicAdministrationController {
     }
 
     @GetMapping("/terms")
-    public ApiResponse<Page<AcademicTermResponse>> listAcademicTerms(
+    public ApiResponse<PageResponse<AcademicTermResponse>> listAcademicTerms(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "startDate") String sortBy,
             @RequestParam(defaultValue = "desc") String direction
     ) {
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
-        return ApiResponse.success("Academic terms fetched successfully", academicAdministrationService.listAcademicTerms(pageable));
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Academic terms fetched successfully",
+                PageResponse.from(academicAdministrationService.listAcademicTerms(pageable))
+        );
     }
 
     @PostMapping("/sections")
@@ -148,17 +153,17 @@ public class AcademicAdministrationController {
     }
 
     @GetMapping("/sections")
-    public ApiResponse<Page<SectionResponse>> listSections(
+    public ApiResponse<PageResponse<SectionResponse>> listSections(
             @RequestParam(required = false) Long programId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String direction
     ) {
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
         return ApiResponse.success(
                 "Sections fetched successfully",
-                academicAdministrationService.listSections(programId, pageable)
+                PageResponse.from(academicAdministrationService.listSections(programId, pageable))
         );
     }
 
@@ -181,17 +186,17 @@ public class AcademicAdministrationController {
     }
 
     @GetMapping("/subjects")
-    public ApiResponse<Page<SubjectResponse>> listSubjects(
+    public ApiResponse<PageResponse<SubjectResponse>> listSubjects(
             @RequestParam(required = false) Long departmentId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String direction
     ) {
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
         return ApiResponse.success(
                 "Subjects fetched successfully",
-                academicAdministrationService.listSubjects(departmentId, pageable)
+                PageResponse.from(academicAdministrationService.listSubjects(departmentId, pageable))
         );
     }
 
@@ -215,12 +220,5 @@ public class AcademicAdministrationController {
                 "Subject prerequisite removed successfully",
                 academicAdministrationService.removePrerequisite(subjectId, prerequisiteSubjectId)
         );
-    }
-
-    private Pageable buildPageable(int page, int size, String sortBy, String direction) {
-        Sort sort = "desc".equalsIgnoreCase(direction)
-                ? Sort.by(sortBy).descending()
-                : Sort.by(sortBy).ascending();
-        return PageRequest.of(page, size, sort);
     }
 }
