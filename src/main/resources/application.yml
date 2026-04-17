@@ -22,6 +22,12 @@ spring:
 server:
   port: ${SERVER_PORT:9090}
 
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:60}
+    refresh-token-expiration-days: ${JWT_REFRESH_TOKEN_EXPIRATION_DAYS:7}
+
 management:
   endpoints:
     web:
