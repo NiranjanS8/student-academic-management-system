@@ -4,6 +4,8 @@ import com.example.sams.academic.domain.Department;
 import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.domain.Program;
 import com.example.sams.academic.domain.Section;
+import com.example.sams.academic.domain.Subject;
+import com.example.sams.academic.domain.SubjectPrerequisite;
 import com.example.sams.academic.dto.AcademicTermRequest;
 import com.example.sams.academic.dto.AcademicTermResponse;
 import com.example.sams.academic.dto.DepartmentRequest;
@@ -12,12 +14,18 @@ import com.example.sams.academic.dto.ProgramRequest;
 import com.example.sams.academic.dto.ProgramResponse;
 import com.example.sams.academic.dto.SectionRequest;
 import com.example.sams.academic.dto.SectionResponse;
+import com.example.sams.academic.dto.SubjectPrerequisiteRequest;
+import com.example.sams.academic.dto.SubjectRequest;
+import com.example.sams.academic.dto.SubjectResponse;
 import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
+import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
+import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,17 +38,23 @@ public class AcademicAdministrationService {
     private final ProgramRepository programRepository;
     private final AcademicTermRepository academicTermRepository;
     private final SectionRepository sectionRepository;
+    private final SubjectRepository subjectRepository;
+    private final SubjectPrerequisiteRepository subjectPrerequisiteRepository;
 
     public AcademicAdministrationService(
             DepartmentRepository departmentRepository,
             ProgramRepository programRepository,
             AcademicTermRepository academicTermRepository,
-            SectionRepository sectionRepository
+            SectionRepository sectionRepository,
+            SubjectRepository subjectRepository,
+            SubjectPrerequisiteRepository subjectPrerequisiteRepository
     ) {
         this.departmentRepository = departmentRepository;
         this.programRepository = programRepository;
         this.academicTermRepository = academicTermRepository;
         this.sectionRepository = sectionRepository;
+        this.subjectRepository = subjectRepository;
+        this.subjectPrerequisiteRepository = subjectPrerequisiteRepository;
     }
 
     @Transactional
@@ -193,6 +207,82 @@ public class AcademicAdministrationService {
         return page.map(this::toSectionResponse);
     }
 
+    @Transactional
+    public SubjectResponse createSubject(SubjectRequest request) {
+        validateSubjectCodeUniqueness(request.code(), null);
+        Department department = getDepartment(request.departmentId());
+
+        Subject subject = new Subject();
+        subject.setCode(normalizeCode(request.code()));
+        subject.setName(request.name().trim());
+        subject.setCredits(request.credits());
+        subject.setDepartment(department);
+        subject.setActive(request.active());
+        subjectRepository.save(subject);
+
+        return toSubjectResponse(subject);
+    }
+
+    @Transactional
+    public SubjectResponse updateSubject(Long subjectId, SubjectRequest request) {
+        Subject subject = getSubject(subjectId);
+        validateSubjectCodeUniqueness(request.code(), subjectId);
+        Department department = getDepartment(request.departmentId());
+
+        subject.setCode(normalizeCode(request.code()));
+        subject.setName(request.name().trim());
+        subject.setCredits(request.credits());
+        subject.setDepartment(department);
+        subject.setActive(request.active());
+        return toSubjectResponse(subject);
+    }
+
+    @Transactional(readOnly = true)
+    public SubjectResponse getSubjectById(Long subjectId) {
+        return toSubjectResponse(getSubject(subjectId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<SubjectResponse> listSubjects(Long departmentId, Pageable pageable) {
+        Page<Subject> page = departmentId == null
+                ? subjectRepository.findAll(pageable)
+                : subjectRepository.findAllByDepartmentId(departmentId, pageable);
+        return page.map(this::toSubjectResponse);
+    }
+
+    @Transactional
+    public SubjectResponse addPrerequisite(Long subjectId, SubjectPrerequisiteRequest request) {
+        Subject subject = getSubject(subjectId);
+        Subject prerequisiteSubject = getSubject(request.prerequisiteSubjectId());
+
+        if (subject.getId().equals(prerequisiteSubject.getId())) {
+            throw new ConflictException("Subject cannot be its own prerequisite");
+        }
+
+        if (subjectPrerequisiteRepository.existsBySubjectIdAndPrerequisiteSubjectId(subjectId, request.prerequisiteSubjectId())) {
+            throw new ConflictException("Prerequisite already exists for this subject");
+        }
+
+        SubjectPrerequisite subjectPrerequisite = new SubjectPrerequisite();
+        subjectPrerequisite.setSubject(subject);
+        subjectPrerequisite.setPrerequisiteSubject(prerequisiteSubject);
+        subjectPrerequisiteRepository.save(subjectPrerequisite);
+
+        return toSubjectResponse(subject);
+    }
+
+    @Transactional
+    public SubjectResponse removePrerequisite(Long subjectId, Long prerequisiteSubjectId) {
+        Subject subject = getSubject(subjectId);
+
+        if (!subjectPrerequisiteRepository.existsBySubjectIdAndPrerequisiteSubjectId(subjectId, prerequisiteSubjectId)) {
+            throw new ResourceNotFoundException("Prerequisite mapping not found");
+        }
+
+        subjectPrerequisiteRepository.deleteBySubjectIdAndPrerequisiteSubjectId(subjectId, prerequisiteSubjectId);
+        return toSubjectResponse(subject);
+    }
+
     private Department getDepartment(Long departmentId) {
         return departmentRepository.findById(departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
@@ -211,6 +301,11 @@ public class AcademicAdministrationService {
     private Section getSection(Long sectionId) {
         return sectionRepository.findById(sectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Section not found"));
+    }
+
+    private Subject getSubject(Long subjectId) {
+        return subjectRepository.findById(subjectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Subject not found"));
     }
 
     private AcademicTerm resolveAcademicTerm(Long academicTermId) {
@@ -269,6 +364,14 @@ public class AcademicAdministrationService {
                 .findAny()
                 .ifPresent(existing -> {
                     throw new ConflictException("Section with name already exists for this program");
+                });
+    }
+
+    private void validateSubjectCodeUniqueness(String code, Long currentSubjectId) {
+        subjectRepository.findByCodeIgnoreCase(code.trim())
+                .filter(existing -> !existing.getId().equals(currentSubjectId))
+                .ifPresent(existing -> {
+                    throw new ConflictException("Subject with code already exists");
                 });
     }
 
@@ -339,6 +442,35 @@ public class AcademicAdministrationService {
                 ),
                 section.getCreatedAt(),
                 section.getUpdatedAt()
+        );
+    }
+
+    private SubjectResponse toSubjectResponse(Subject subject) {
+        Department department = subject.getDepartment();
+        List<SubjectResponse.PrerequisiteSummary> prerequisites = subjectPrerequisiteRepository.findAllBySubjectId(subject.getId())
+                .stream()
+                .map(SubjectPrerequisite::getPrerequisiteSubject)
+                .map(prerequisite -> new SubjectResponse.PrerequisiteSummary(
+                        prerequisite.getId(),
+                        prerequisite.getCode(),
+                        prerequisite.getName()
+                ))
+                .toList();
+
+        return new SubjectResponse(
+                subject.getId(),
+                subject.getCode(),
+                subject.getName(),
+                subject.getCredits(),
+                subject.isActive(),
+                new SubjectResponse.DepartmentSummary(
+                        department.getId(),
+                        department.getCode(),
+                        department.getName()
+                ),
+                prerequisites,
+                subject.getCreatedAt(),
+                subject.getUpdatedAt()
         );
     }
 }

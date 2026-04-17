@@ -8,6 +8,9 @@ import com.example.sams.academic.dto.ProgramRequest;
 import com.example.sams.academic.dto.ProgramResponse;
 import com.example.sams.academic.dto.SectionRequest;
 import com.example.sams.academic.dto.SectionResponse;
+import com.example.sams.academic.dto.SubjectPrerequisiteRequest;
+import com.example.sams.academic.dto.SubjectRequest;
+import com.example.sams.academic.dto.SubjectResponse;
 import com.example.sams.academic.service.AcademicAdministrationService;
 import com.example.sams.common.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -17,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -155,6 +159,61 @@ public class AcademicAdministrationController {
         return ApiResponse.success(
                 "Sections fetched successfully",
                 academicAdministrationService.listSections(programId, pageable)
+        );
+    }
+
+    @PostMapping("/subjects")
+    public ApiResponse<SubjectResponse> createSubject(@Valid @RequestBody SubjectRequest request) {
+        return ApiResponse.success("Subject created successfully", academicAdministrationService.createSubject(request));
+    }
+
+    @PutMapping("/subjects/{subjectId}")
+    public ApiResponse<SubjectResponse> updateSubject(
+            @PathVariable Long subjectId,
+            @Valid @RequestBody SubjectRequest request
+    ) {
+        return ApiResponse.success("Subject updated successfully", academicAdministrationService.updateSubject(subjectId, request));
+    }
+
+    @GetMapping("/subjects/{subjectId}")
+    public ApiResponse<SubjectResponse> getSubject(@PathVariable Long subjectId) {
+        return ApiResponse.success("Subject fetched successfully", academicAdministrationService.getSubjectById(subjectId));
+    }
+
+    @GetMapping("/subjects")
+    public ApiResponse<Page<SubjectResponse>> listSubjects(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Subjects fetched successfully",
+                academicAdministrationService.listSubjects(departmentId, pageable)
+        );
+    }
+
+    @PostMapping("/subjects/{subjectId}/prerequisites")
+    public ApiResponse<SubjectResponse> addPrerequisite(
+            @PathVariable Long subjectId,
+            @Valid @RequestBody SubjectPrerequisiteRequest request
+    ) {
+        return ApiResponse.success(
+                "Subject prerequisite added successfully",
+                academicAdministrationService.addPrerequisite(subjectId, request)
+        );
+    }
+
+    @DeleteMapping("/subjects/{subjectId}/prerequisites/{prerequisiteSubjectId}")
+    public ApiResponse<SubjectResponse> removePrerequisite(
+            @PathVariable Long subjectId,
+            @PathVariable Long prerequisiteSubjectId
+    ) {
+        return ApiResponse.success(
+                "Subject prerequisite removed successfully",
+                academicAdministrationService.removePrerequisite(subjectId, prerequisiteSubjectId)
         );
     }
 
