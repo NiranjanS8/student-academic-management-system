@@ -1894,6 +1894,10 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.student.id").value(studentId))
                 .andExpect(jsonPath("$.data.marksObtained").value(84.5))
+                .andExpect(jsonPath("$.data.percentageScore").value(84.5))
+                .andExpect(jsonPath("$.data.weightedScore").value(25.35))
+                .andExpect(jsonPath("$.data.letterGrade").value("A"))
+                .andExpect(jsonPath("$.data.gradePoints").value(3.7))
                 .andExpect(jsonPath("$.data.remarks").value("Strong paper"));
 
         Long markEntryId = markEntryRepository.findAll().stream()
@@ -1912,6 +1916,10 @@ class AuthIntegrationTest {
                                 }
                                 """.formatted(studentId)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.percentageScore").value(88.0))
+                .andExpect(jsonPath("$.data.weightedScore").value(26.4))
+                .andExpect(jsonPath("$.data.letterGrade").value("A"))
+                .andExpect(jsonPath("$.data.gradePoints").value(3.7))
                 .andExpect(jsonPath("$.data.marksObtained").value(88.0))
                 .andExpect(jsonPath("$.data.remarks").value("Updated after recheck"));
 
@@ -1925,6 +1933,8 @@ class AuthIntegrationTest {
                         .header("Authorization", "Bearer " + teacherToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].student.id").value(studentId))
+                .andExpect(jsonPath("$.data.content[0].weightedScore").value(26.4))
+                .andExpect(jsonPath("$.data.content[0].letterGrade").value("A"))
                 .andExpect(jsonPath("$.data.content[0].marksObtained").value(88.0));
     }
 

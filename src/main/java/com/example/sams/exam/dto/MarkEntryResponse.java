@@ -9,6 +9,10 @@ public record MarkEntryResponse(
         StudentSummary student,
         BigDecimal marksObtained,
         BigDecimal maxMarks,
+        BigDecimal percentageScore,
+        BigDecimal weightedScore,
+        String letterGrade,
+        BigDecimal gradePoints,
         String remarks,
         Instant createdAt,
         Instant updatedAt

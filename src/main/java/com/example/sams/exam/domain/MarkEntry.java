@@ -38,6 +38,18 @@ public class MarkEntry extends BaseEntity {
     @Column(name = "marks_obtained", nullable = false, precision = 6, scale = 2)
     private BigDecimal marksObtained;
 
+    @Column(name = "percentage_score", nullable = false, precision = 5, scale = 2)
+    private BigDecimal percentageScore;
+
+    @Column(name = "weighted_score", nullable = false, precision = 6, scale = 2)
+    private BigDecimal weightedScore;
+
+    @Column(name = "letter_grade", nullable = false, length = 5)
+    private String letterGrade;
+
+    @Column(name = "grade_points", nullable = false, precision = 3, scale = 2)
+    private BigDecimal gradePoints;
+
     @Column(length = 255)
     private String remarks;
 }

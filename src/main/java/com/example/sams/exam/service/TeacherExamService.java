@@ -36,6 +36,7 @@ public class TeacherExamService {
     private final EnrollmentRepository enrollmentRepository;
     private final ExamResponseMapper examResponseMapper;
     private final MarkEntryResponseMapper markEntryResponseMapper;
+    private final GradeCalculationService gradeCalculationService;
 
     public TeacherExamService(
             ExamRepository examRepository,
@@ -44,7 +45,8 @@ public class TeacherExamService {
             StudentRepository studentRepository,
             EnrollmentRepository enrollmentRepository,
             ExamResponseMapper examResponseMapper,
-            MarkEntryResponseMapper markEntryResponseMapper
+            MarkEntryResponseMapper markEntryResponseMapper,
+            GradeCalculationService gradeCalculationService
     ) {
         this.examRepository = examRepository;
         this.markEntryRepository = markEntryRepository;
@@ -53,6 +55,7 @@ public class TeacherExamService {
         this.enrollmentRepository = enrollmentRepository;
         this.examResponseMapper = examResponseMapper;
         this.markEntryResponseMapper = markEntryResponseMapper;
+        this.gradeCalculationService = gradeCalculationService;
     }
 
     @Transactional
@@ -102,6 +105,7 @@ public class TeacherExamService {
         markEntry.setExam(exam);
         markEntry.setStudent(student);
         markEntry.setMarksObtained(request.marksObtained());
+        applyCalculatedGradeFields(markEntry, exam);
         markEntry.setRemarks(normalize(request.remarks()));
         markEntryRepository.save(markEntry);
 
@@ -130,6 +134,7 @@ public class TeacherExamService {
         }
 
         markEntry.setMarksObtained(request.marksObtained());
+        applyCalculatedGradeFields(markEntry, exam);
         markEntry.setRemarks(normalize(request.remarks()));
         return markEntryResponseMapper.toResponse(markEntry);
     }
@@ -171,6 +176,18 @@ public class TeacherExamService {
         if (marksObtained.compareTo(maxMarks) > 0) {
             throw new ConflictException("marksObtained cannot exceed maxMarks");
         }
+    }
+
+    private void applyCalculatedGradeFields(MarkEntry markEntry, Exam exam) {
+        GradeCalculationService.GradeSnapshot gradeSnapshot = gradeCalculationService.calculate(
+                markEntry.getMarksObtained(),
+                exam.getMaxMarks(),
+                exam.getWeightage()
+        );
+        markEntry.setPercentageScore(gradeSnapshot.percentageScore());
+        markEntry.setWeightedScore(gradeSnapshot.weightedScore());
+        markEntry.setLetterGrade(gradeSnapshot.letterGrade());
+        markEntry.setGradePoints(gradeSnapshot.gradePoints());
     }
 
     private String normalize(String value) {

@@ -24,6 +24,10 @@ public class MarkEntryResponseMapper {
                 ),
                 markEntry.getMarksObtained(),
                 markEntry.getExam().getMaxMarks(),
+                markEntry.getPercentageScore(),
+                markEntry.getWeightedScore(),
+                markEntry.getLetterGrade(),
+                markEntry.getGradePoints(),
                 markEntry.getRemarks(),
                 markEntry.getCreatedAt(),
                 markEntry.getUpdatedAt()
