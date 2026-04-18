@@ -4,6 +4,7 @@ import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.domain.Department;
 import com.example.sams.academic.domain.Program;
 import com.example.sams.academic.domain.Section;
+import com.example.sams.academic.domain.SubjectPrerequisite;
 import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
@@ -13,6 +14,8 @@ import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.domain.RefreshToken;
 import com.example.sams.auth.repository.RefreshTokenRepository;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
+import com.example.sams.enrollment.domain.Enrollment;
+import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
@@ -1460,6 +1463,289 @@ class AuthIntegrationTest {
                                 """.formatted(draftOfferingId)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Enrollment is only allowed for OPEN offerings"));
+    }
+
+    @Test
+    void studentCannotEnrollWhenPrerequisitesAreMissing() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        AcademicTerm previousTerm = new AcademicTerm();
+        previousTerm.setName("Semester 0");
+        previousTerm.setAcademicYear("2025-2026");
+        previousTerm.setStartDate(LocalDate.of(2025, 1, 1));
+        previousTerm.setEndDate(LocalDate.of(2025, 5, 30));
+        previousTerm.setStatus("COMPLETED");
+        academicTermRepository.save(previousTerm);
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DSA701",
+                                  "name": "Data Structures Advanced",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "ALG702",
+                                  "name": "Algorithms",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-prereq-missing",
+                                  "email": "teacher-prereq-missing@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-PREREQ-01",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-prereq-missing",
+                                  "email": "student-prereq-missing@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-PREREQ-01",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long prerequisiteSubjectId = subjectRepository.findByCodeIgnoreCase("DSA701").orElseThrow().getId();
+        Long targetSubjectId = subjectRepository.findByCodeIgnoreCase("ALG702").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-PREREQ-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        SubjectPrerequisite subjectPrerequisite = new SubjectPrerequisite();
+        subjectPrerequisite.setSubject(subjectRepository.findById(targetSubjectId).orElseThrow());
+        subjectPrerequisite.setPrerequisiteSubject(subjectRepository.findById(prerequisiteSubjectId).orElseThrow());
+        subjectPrerequisiteRepository.save(subjectPrerequisite);
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(targetSubjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long targetOfferingId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentToken = extractAccessToken("student-prereq-missing", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(targetOfferingId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Missing prerequisite subjects: DSA701"));
+    }
+
+    @Test
+    void studentCanEnrollWhenPrerequisiteWasSatisfiedInEarlierCompletedTerm() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        AcademicTerm previousTerm = new AcademicTerm();
+        previousTerm.setName("Semester 0");
+        previousTerm.setAcademicYear("2025-2026");
+        previousTerm.setStartDate(LocalDate.of(2025, 1, 1));
+        previousTerm.setEndDate(LocalDate.of(2025, 5, 30));
+        previousTerm.setStatus("COMPLETED");
+        academicTermRepository.save(previousTerm);
+
+        Section previousSection = new Section();
+        previousSection.setProgram(program);
+        previousSection.setName("PREV");
+        previousSection.setCurrentTerm(previousTerm);
+        sectionRepository.save(previousSection);
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DB701",
+                                  "name": "Database Foundations",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DB702",
+                                  "name": "Database Advanced",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-prereq-pass",
+                                  "email": "teacher-prereq-pass@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-PREREQ-02",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-prereq-pass",
+                                  "email": "student-prereq-pass@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-PREREQ-02",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long prerequisiteSubjectId = subjectRepository.findByCodeIgnoreCase("DB701").orElseThrow().getId();
+        Long targetSubjectId = subjectRepository.findByCodeIgnoreCase("DB702").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-PREREQ-02".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        SubjectPrerequisite subjectPrerequisite = new SubjectPrerequisite();
+        subjectPrerequisite.setSubject(subjectRepository.findById(targetSubjectId).orElseThrow());
+        subjectPrerequisite.setPrerequisiteSubject(subjectRepository.findById(prerequisiteSubjectId).orElseThrow());
+        subjectPrerequisiteRepository.save(subjectPrerequisite);
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(prerequisiteSubjectId, previousTerm.getId(), previousSection.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long prerequisiteOfferingId = courseOfferingRepository.findAllBySectionId(previousSection.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Enrollment prerequisiteEnrollment = new Enrollment();
+        prerequisiteEnrollment.setStudent(studentRepository.findByUserId(
+                userRepository.findByUsername("student-prereq-pass").orElseThrow().getId()
+        ).orElseThrow());
+        prerequisiteEnrollment.setCourseOffering(courseOfferingRepository.findById(prerequisiteOfferingId).orElseThrow());
+        prerequisiteEnrollment.setStatus(EnrollmentStatus.ENROLLED);
+        prerequisiteEnrollment.setEnrolledAt(previousTerm.getEndDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+        enrollmentRepository.save(prerequisiteEnrollment);
+
+        String studentToken = extractAccessToken("student-prereq-pass", "Student@123");
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(targetSubjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long targetOfferingId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .map(offering -> offering.getId())
+                .max(Long::compareTo)
+                .orElseThrow();
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(targetOfferingId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ENROLLED"))
+                .andExpect(jsonPath("$.data.courseOffering.subject.code").value("DB702"));
     }
 
     private String extractAccessToken() throws Exception {

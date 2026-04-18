@@ -29,17 +29,20 @@ public class StudentEnrollmentService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final StudentRepository studentRepository;
     private final EnrollmentResponseMapper enrollmentResponseMapper;
+    private final EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator;
 
     public StudentEnrollmentService(
             EnrollmentRepository enrollmentRepository,
             CourseOfferingRepository courseOfferingRepository,
             StudentRepository studentRepository,
-            EnrollmentResponseMapper enrollmentResponseMapper
+            EnrollmentResponseMapper enrollmentResponseMapper,
+            EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator
     ) {
         this.enrollmentRepository = enrollmentRepository;
         this.courseOfferingRepository = courseOfferingRepository;
         this.studentRepository = studentRepository;
         this.enrollmentResponseMapper = enrollmentResponseMapper;
+        this.enrollmentPrerequisiteValidator = enrollmentPrerequisiteValidator;
     }
 
     @Transactional
@@ -47,6 +50,7 @@ public class StudentEnrollmentService {
         Student student = getAuthenticatedStudent();
         CourseOffering offering = getVisibleOffering(student, request.courseOfferingId());
         validateOfferingIsEnrollAble(offering);
+        enrollmentPrerequisiteValidator.validate(student, offering);
 
         Enrollment existingEnrollment = enrollmentRepository.findByStudentIdAndCourseOfferingId(student.getId(), offering.getId())
                 .orElse(null);

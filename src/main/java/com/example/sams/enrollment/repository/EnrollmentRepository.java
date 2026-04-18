@@ -2,6 +2,7 @@ package com.example.sams.enrollment.repository;
 
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,6 +17,22 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     Optional<Enrollment> findByStudentIdAndCourseOfferingId(Long studentId, Long courseOfferingId);
 
     long countByCourseOfferingIdAndStatus(Long courseOfferingId, EnrollmentStatus status);
+
+    @Query("""
+            select count(e) > 0 from Enrollment e
+            join e.courseOffering co
+            join co.term term
+            where e.student.id = :studentId
+              and co.subject.id = :subjectId
+              and e.status = :status
+              and term.endDate < :targetTermStartDate
+            """)
+    boolean existsSatisfiedPrerequisiteEnrollment(
+            @Param("studentId") Long studentId,
+            @Param("subjectId") Long subjectId,
+            @Param("status") EnrollmentStatus status,
+            @Param("targetTermStartDate") LocalDate targetTermStartDate
+    );
 
     @Query("""
             select e from Enrollment e
