@@ -1097,6 +1097,371 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Enrollment is already dropped"));
     }
 
+    @Test
+    void studentCannotEnrollWhenOfferingCapacityIsReached() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CAP605",
+                                  "name": "Capacity Systems",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-capacity",
+                                  "email": "teacher-capacity@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-CAP-01",
+                                  "departmentId": %d,
+                                  "designation": "Lecturer"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-capacity-1",
+                                  "email": "student-capacity-1@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-CAP-01",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-capacity-2",
+                                  "email": "student-capacity-2@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-CAP-02",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("CAP605").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-CAP-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 1,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentOneToken = extractAccessToken("student-capacity-1", "Student@123");
+        String studentTwoToken = extractAccessToken("student-capacity-2", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentOneToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentTwoToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Offering capacity has been reached"));
+    }
+
+    @Test
+    void studentCannotEnrollBeforeEnrollmentWindowOpens() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "WIN606",
+                                  "name": "Window Systems",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-window",
+                                  "email": "teacher-window@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-WIN-01",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-window",
+                                  "email": "student-window@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-WIN-01",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("WIN606").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-WIN-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "enrollmentOpenAt": "2099-01-01T00:00:00Z",
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentToken = extractAccessToken("student-window", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Enrollment has not opened for this offering yet"));
+    }
+
+    @Test
+    void studentCannotEnrollAfterEnrollmentWindowClosesOrWhenOfferingIsNotOpen() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CLS607",
+                                  "name": "Closed Systems",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DRF608",
+                                  "name": "Draft Systems",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-window-closed",
+                                  "email": "teacher-window-closed@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-WIN-02",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-window-closed",
+                                  "email": "student-window-closed@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-WIN-02",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long closedSubjectId = subjectRepository.findByCodeIgnoreCase("CLS607").orElseThrow().getId();
+        Long draftSubjectId = subjectRepository.findByCodeIgnoreCase("DRF608").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-WIN-02".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "enrollmentCloseAt": "2000-01-01T00:00:00Z",
+                                  "status": "OPEN"
+                                }
+                                """.formatted(closedSubjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "DRAFT"
+                                }
+                                """.formatted(draftSubjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        java.util.List<Long> offeringIds = courseOfferingRepository.findAllBySectionId(
+                        section.getId(),
+                        org.springframework.data.domain.PageRequest.of(
+                                0,
+                                10,
+                                org.springframework.data.domain.Sort.by("id").ascending()
+                        )
+                )
+                .stream()
+                .map(offering -> offering.getId())
+                .toList();
+        Long closedOfferingId = offeringIds.get(0);
+        Long draftOfferingId = offeringIds.get(1);
+
+        String studentToken = extractAccessToken("student-window-closed", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(closedOfferingId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Enrollment window has closed for this offering"));
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(draftOfferingId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Enrollment is only allowed for OPEN offerings"));
+    }
+
     private String extractAccessToken() throws Exception {
         return extractAccessToken("admin", "Admin@123");
     }

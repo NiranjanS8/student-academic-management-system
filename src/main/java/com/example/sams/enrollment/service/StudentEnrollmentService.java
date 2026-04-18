@@ -8,6 +8,7 @@ import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.dto.EnrollmentRequest;
 import com.example.sams.enrollment.dto.EnrollmentResponse;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
+import com.example.sams.offering.domain.CourseOfferingStatus;
 import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.Student;
@@ -45,6 +46,7 @@ public class StudentEnrollmentService {
     public EnrollmentResponse enroll(EnrollmentRequest request) {
         Student student = getAuthenticatedStudent();
         CourseOffering offering = getVisibleOffering(student, request.courseOfferingId());
+        validateOfferingIsEnrollAble(offering);
 
         Enrollment existingEnrollment = enrollmentRepository.findByStudentIdAndCourseOfferingId(student.getId(), offering.getId())
                 .orElse(null);
@@ -101,6 +103,28 @@ public class StudentEnrollmentService {
         EnrollmentStatus parsedStatus = (status == null || status.isBlank()) ? null : parseStatus(status);
         return enrollmentRepository.searchStudentEnrollments(getAuthenticatedUserId(), termId, parsedStatus, pageable)
                 .map(enrollmentResponseMapper::toResponse);
+    }
+
+    private void validateOfferingIsEnrollAble(CourseOffering offering) {
+        Instant now = Instant.now();
+
+        if (offering.getStatus() != CourseOfferingStatus.OPEN) {
+            throw new ConflictException("Enrollment is only allowed for OPEN offerings");
+        }
+        if (offering.getEnrollmentOpenAt() != null && now.isBefore(offering.getEnrollmentOpenAt())) {
+            throw new ConflictException("Enrollment has not opened for this offering yet");
+        }
+        if (offering.getEnrollmentCloseAt() != null && now.isAfter(offering.getEnrollmentCloseAt())) {
+            throw new ConflictException("Enrollment window has closed for this offering");
+        }
+
+        long activeEnrollments = enrollmentRepository.countByCourseOfferingIdAndStatus(
+                offering.getId(),
+                EnrollmentStatus.ENROLLED
+        );
+        if (activeEnrollments >= offering.getCapacity()) {
+            throw new ConflictException("Offering capacity has been reached");
+        }
     }
 
     private CourseOffering getVisibleOffering(Student student, Long offeringId) {
