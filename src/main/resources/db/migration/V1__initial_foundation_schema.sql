@@ -134,6 +134,30 @@ CREATE TABLE enrollments (
     CONSTRAINT uk_enrollment_student_offering UNIQUE (student_id, course_offering_id)
 );
 
+CREATE TABLE exams (
+    id BIGSERIAL PRIMARY KEY,
+    course_offering_id BIGINT NOT NULL REFERENCES course_offerings(id),
+    title VARCHAR(150) NOT NULL,
+    exam_type VARCHAR(50) NOT NULL,
+    max_marks NUMERIC(6,2) NOT NULL,
+    weightage NUMERIC(5,2) NOT NULL,
+    scheduled_at TIMESTAMP WITH TIME ZONE,
+    is_published BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE mark_entries (
+    id BIGSERIAL PRIMARY KEY,
+    exam_id BIGINT NOT NULL REFERENCES exams(id),
+    student_id BIGINT NOT NULL REFERENCES students(id),
+    marks_obtained NUMERIC(6,2) NOT NULL,
+    remarks VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_mark_entry_exam_student UNIQUE (exam_id, student_id)
+);
+
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX idx_programs_department_id ON programs(department_id);
 CREATE INDEX idx_sections_program_id ON sections(program_id);
@@ -146,3 +170,6 @@ CREATE INDEX idx_course_offerings_section_id ON course_offerings(section_id);
 CREATE INDEX idx_course_offerings_teacher_id ON course_offerings(teacher_id);
 CREATE INDEX idx_enrollments_student_id ON enrollments(student_id);
 CREATE INDEX idx_enrollments_course_offering_id ON enrollments(course_offering_id);
+CREATE INDEX idx_exams_course_offering_id ON exams(course_offering_id);
+CREATE INDEX idx_mark_entries_exam_id ON mark_entries(exam_id);
+CREATE INDEX idx_mark_entries_student_id ON mark_entries(student_id);

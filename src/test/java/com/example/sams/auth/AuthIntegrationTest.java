@@ -13,9 +13,11 @@ import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.domain.RefreshToken;
 import com.example.sams.auth.repository.RefreshTokenRepository;
-import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
+import com.example.sams.enrollment.repository.EnrollmentRepository;
+import com.example.sams.exam.repository.ExamRepository;
+import com.example.sams.exam.repository.MarkEntryRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
@@ -87,6 +89,12 @@ class AuthIntegrationTest {
     private EnrollmentRepository enrollmentRepository;
 
     @Autowired
+    private ExamRepository examRepository;
+
+    @Autowired
+    private MarkEntryRepository markEntryRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private Department department;
@@ -97,6 +105,8 @@ class AuthIntegrationTest {
     @BeforeEach
     void setUp() {
         refreshTokenRepository.deleteAll();
+        markEntryRepository.deleteAll();
+        examRepository.deleteAll();
         enrollmentRepository.deleteAll();
         studentRepository.deleteAll();
         courseOfferingRepository.deleteAll();
@@ -1746,6 +1756,330 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ENROLLED"))
                 .andExpect(jsonPath("$.data.courseOffering.subject.code").value("DB702"));
+    }
+
+    @Test
+    void assignedTeacherCanManageExamsAndMarksForEnrolledStudents() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "EX701",
+                                  "name": "Advanced Evaluation Systems",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-exam-owner",
+                                  "email": "teacher-exam-owner@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-EXAM-01",
+                                  "departmentId": %d,
+                                  "designation": "Assistant Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-marked",
+                                  "email": "student-marked@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-MARK-01",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("EX701").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-EXAM-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long studentId = studentRepository.findAll().stream()
+                .filter(student -> "STU-MARK-01".equals(student.getStudentCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentToken = extractAccessToken("student-marked", "Student@123");
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ENROLLED"));
+
+        String teacherToken = extractAccessToken("teacher-exam-owner", "Teacher@123");
+        mockMvc.perform(post("/api/v1/teacher/exams")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d,
+                                  "title": "Midterm",
+                                  "examType": "written",
+                                  "maxMarks": 100.00,
+                                  "weightage": 30.00,
+                                  "scheduledAt": "2026-08-01T09:00:00Z"
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("Midterm"))
+                .andExpect(jsonPath("$.data.examType").value("WRITTEN"))
+                .andExpect(jsonPath("$.data.maxMarks").value(100.0))
+                .andExpect(jsonPath("$.data.weightage").value(30.0));
+
+        Long examId = examRepository.findAll().stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/teacher/exams/{examId}/marks", examId)
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "studentId": %d,
+                                  "marksObtained": 84.50,
+                                  "remarks": "Strong paper"
+                                }
+                                """.formatted(studentId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.student.id").value(studentId))
+                .andExpect(jsonPath("$.data.marksObtained").value(84.5))
+                .andExpect(jsonPath("$.data.remarks").value("Strong paper"));
+
+        Long markEntryId = markEntryRepository.findAll().stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(put("/api/v1/teacher/exams/{examId}/marks/{markEntryId}", examId, markEntryId)
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "studentId": %d,
+                                  "marksObtained": 88.00,
+                                  "remarks": "Updated after recheck"
+                                }
+                                """.formatted(studentId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.marksObtained").value(88.0))
+                .andExpect(jsonPath("$.data.remarks").value("Updated after recheck"));
+
+        mockMvc.perform(get("/api/v1/teacher/exams")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .param("courseOfferingId", String.valueOf(offeringId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].title").value("Midterm"));
+
+        mockMvc.perform(get("/api/v1/teacher/exams/{examId}/marks", examId)
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].student.id").value(studentId))
+                .andExpect(jsonPath("$.data.content[0].marksObtained").value(88.0));
+    }
+
+    @Test
+    void teacherCannotManageExamOrMarksForUnassignedOfferingOrNonEnrolledStudent() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "EX702",
+                                  "name": "Secure Assessment Models",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-exam-assigned",
+                                  "email": "teacher-exam-assigned@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-EXAM-02",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-exam-other",
+                                  "email": "teacher-exam-other@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-EXAM-03",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-not-enrolled",
+                                  "email": "student-not-enrolled@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-MARK-02",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(department.getId(), program.getId(), term.getId(), section.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("EX702").orElseThrow().getId();
+        Long assignedTeacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-EXAM-02".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long studentId = studentRepository.findAll().stream()
+                .filter(student -> "STU-MARK-02".equals(student.getStudentCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), section.getId(), assignedTeacherId)))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String otherTeacherToken = extractAccessToken("teacher-exam-other", "Teacher@123");
+        mockMvc.perform(post("/api/v1/teacher/exams")
+                        .header("Authorization", "Bearer " + otherTeacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d,
+                                  "title": "Unauthorized Midterm",
+                                  "examType": "written",
+                                  "maxMarks": 100.00,
+                                  "weightage": 25.00,
+                                  "scheduledAt": "2026-08-10T09:00:00Z"
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Course offering not found"));
+
+        String assignedTeacherToken = extractAccessToken("teacher-exam-assigned", "Teacher@123");
+        mockMvc.perform(post("/api/v1/teacher/exams")
+                        .header("Authorization", "Bearer " + assignedTeacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d,
+                                  "title": "Final Exam",
+                                  "examType": "practical",
+                                  "maxMarks": 100.00,
+                                  "weightage": 40.00,
+                                  "scheduledAt": "2026-09-15T09:00:00Z"
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.examType").value("PRACTICAL"));
+
+        Long examId = examRepository.findAll().stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/teacher/exams/{examId}/marks", examId)
+                        .header("Authorization", "Bearer " + assignedTeacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "studentId": %d,
+                                  "marksObtained": 76.00,
+                                  "remarks": "Should fail"
+                                }
+                                """.formatted(studentId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Marks can only be entered for actively enrolled students"));
     }
 
     private String extractAccessToken() throws Exception {
