@@ -12,6 +12,7 @@ import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.domain.RefreshToken;
 import com.example.sams.auth.repository.RefreshTokenRepository;
+import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
@@ -80,6 +81,9 @@ class AuthIntegrationTest {
     private CourseOfferingRepository courseOfferingRepository;
 
     @Autowired
+    private EnrollmentRepository enrollmentRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private Department department;
@@ -90,6 +94,7 @@ class AuthIntegrationTest {
     @BeforeEach
     void setUp() {
         refreshTokenRepository.deleteAll();
+        enrollmentRepository.deleteAll();
         studentRepository.deleteAll();
         courseOfferingRepository.deleteAll();
         teacherRepository.deleteAll();
@@ -594,6 +599,252 @@ class AuthIntegrationTest {
 
         mockMvc.perform(get("/api/v1/student/offerings/{offeringId}", hiddenOfferingId)
                         .header("Authorization", "Bearer " + studentAccessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Course offering not found"));
+    }
+
+    @Test
+    void studentCanEnrollDropAndViewEnrollmentHistory() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "SE601",
+                                  "name": "Secure Engineering",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-enrollment",
+                                  "email": "teacher-enrollment@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-ENROLL-01",
+                                  "departmentId": %d,
+                                  "designation": "Assistant Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-enrollment",
+                                  "email": "student-enrollment@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-ENROLL-01",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(
+                                department.getId(),
+                                program.getId(),
+                                term.getId(),
+                                section.getId()
+                        )))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("SE601").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-ENROLL-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 50,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), section.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(section.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentAccessToken = extractAccessToken("student-enrollment", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ENROLLED"))
+                .andExpect(jsonPath("$.data.courseOffering.id").value(offeringId))
+                .andExpect(jsonPath("$.data.courseOffering.subject.code").value("SE601"));
+
+        Long enrollmentId = enrollmentRepository.findAll().stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(get("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].id").value(enrollmentId))
+                .andExpect(jsonPath("$.data.content[0].status").value("ENROLLED"));
+
+        mockMvc.perform(get("/api/v1/student/enrollments/history")
+                        .header("Authorization", "Bearer " + studentAccessToken)
+                        .param("termId", String.valueOf(term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].status").value("ENROLLED"));
+
+        mockMvc.perform(post("/api/v1/student/enrollments/{enrollmentId}/drop", enrollmentId)
+                        .header("Authorization", "Bearer " + studentAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DROPPED"))
+                .andExpect(jsonPath("$.data.droppedAt").isNotEmpty());
+
+        mockMvc.perform(get("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(0));
+
+        mockMvc.perform(get("/api/v1/student/enrollments/history")
+                        .header("Authorization", "Bearer " + studentAccessToken)
+                        .param("status", "DROPPED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].id").value(enrollmentId))
+                .andExpect(jsonPath("$.data.content[0].status").value("DROPPED"));
+    }
+
+    @Test
+    void studentCannotEnrollInOfferingOutsideOwnSectionOrTerm() throws Exception {
+        String adminAccessToken = extractAccessToken();
+
+        Section otherSection = new Section();
+        otherSection.setProgram(program);
+        otherSection.setName("C");
+        otherSection.setCurrentTerm(term);
+        sectionRepository.save(otherSection);
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "OS602",
+                                  "name": "Operating Systems Lab",
+                                  "credits": 3.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-enrollment-hidden",
+                                  "email": "teacher-enrollment-hidden@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-ENROLL-02",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/students")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "student-hidden-enrollment",
+                                  "email": "student-hidden-enrollment@sams.local",
+                                  "password": "Student@123",
+                                  "studentCode": "STU-ENROLL-02",
+                                  "departmentId": %d,
+                                  "programId": %d,
+                                  "currentTermId": %d,
+                                  "sectionId": %d,
+                                  "academicStatus": "ACTIVE",
+                                  "admissionDate": "2026-04-10"
+                                }
+                                """.formatted(
+                                department.getId(),
+                                program.getId(),
+                                term.getId(),
+                                section.getId()
+                        )))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("OS602").orElseThrow().getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-ENROLL-02".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 30,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), otherSection.getId(), teacherId)))
+                .andExpect(status().isOk());
+
+        Long hiddenOfferingId = courseOfferingRepository.findAllBySectionId(otherSection.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String studentAccessToken = extractAccessToken("student-hidden-enrollment", "Student@123");
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(hiddenOfferingId)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Course offering not found"));
     }
