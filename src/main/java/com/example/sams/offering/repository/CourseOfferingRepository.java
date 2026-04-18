@@ -6,6 +6,8 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface CourseOfferingRepository extends JpaRepository<CourseOffering, Long> {
 
@@ -22,4 +24,21 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
     Page<CourseOffering> findAllByTeacherUserId(Long userId, Pageable pageable);
 
     List<CourseOffering> findAllByTeacherId(Long teacherId);
+
+    @Query("""
+            select co from CourseOffering co
+            where (:termId is null or co.term.id = :termId)
+              and (:sectionId is null or co.section.id = :sectionId)
+              and (:teacherId is null or co.teacher.id = :teacherId)
+              and (:subjectId is null or co.subject.id = :subjectId)
+              and (:status is null or co.status = :status)
+            """)
+    Page<CourseOffering> search(
+            @Param("termId") Long termId,
+            @Param("sectionId") Long sectionId,
+            @Param("teacherId") Long teacherId,
+            @Param("subjectId") Long subjectId,
+            @Param("status") CourseOfferingStatus status,
+            Pageable pageable
+    );
 }
