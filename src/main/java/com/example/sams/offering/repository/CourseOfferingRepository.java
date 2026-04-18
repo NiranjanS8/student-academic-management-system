@@ -3,6 +3,7 @@ package com.example.sams.offering.repository;
 import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.domain.CourseOfferingStatus;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,6 +26,8 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
 
     List<CourseOffering> findAllByTeacherId(Long teacherId);
 
+    Optional<CourseOffering> findByIdAndTeacherUserId(Long offeringId, Long userId);
+
     @Query("""
             select co from CourseOffering co
             where (:termId is null or co.term.id = :termId)
@@ -37,6 +40,23 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             @Param("termId") Long termId,
             @Param("sectionId") Long sectionId,
             @Param("teacherId") Long teacherId,
+            @Param("subjectId") Long subjectId,
+            @Param("status") CourseOfferingStatus status,
+            Pageable pageable
+    );
+
+    @Query("""
+            select co from CourseOffering co
+            where co.teacher.user.id = :teacherUserId
+              and (:termId is null or co.term.id = :termId)
+              and (:sectionId is null or co.section.id = :sectionId)
+              and (:subjectId is null or co.subject.id = :subjectId)
+              and (:status is null or co.status = :status)
+            """)
+    Page<CourseOffering> searchAssignedToTeacher(
+            @Param("teacherUserId") Long teacherUserId,
+            @Param("termId") Long termId,
+            @Param("sectionId") Long sectionId,
             @Param("subjectId") Long subjectId,
             @Param("status") CourseOfferingStatus status,
             Pageable pageable

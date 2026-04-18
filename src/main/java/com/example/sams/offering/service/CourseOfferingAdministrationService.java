@@ -14,7 +14,6 @@ import com.example.sams.offering.dto.CourseOfferingRequest;
 import com.example.sams.offering.dto.CourseOfferingResponse;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.Teacher;
-import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.TeacherRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,19 +28,22 @@ public class CourseOfferingAdministrationService {
     private final AcademicTermRepository academicTermRepository;
     private final SectionRepository sectionRepository;
     private final TeacherRepository teacherRepository;
+    private final CourseOfferingResponseMapper courseOfferingResponseMapper;
 
     public CourseOfferingAdministrationService(
             CourseOfferingRepository courseOfferingRepository,
             SubjectRepository subjectRepository,
             AcademicTermRepository academicTermRepository,
             SectionRepository sectionRepository,
-            TeacherRepository teacherRepository
+            TeacherRepository teacherRepository,
+            CourseOfferingResponseMapper courseOfferingResponseMapper
     ) {
         this.courseOfferingRepository = courseOfferingRepository;
         this.subjectRepository = subjectRepository;
         this.academicTermRepository = academicTermRepository;
         this.sectionRepository = sectionRepository;
         this.teacherRepository = teacherRepository;
+        this.courseOfferingResponseMapper = courseOfferingResponseMapper;
     }
 
     @Transactional
@@ -150,41 +152,6 @@ public class CourseOfferingAdministrationService {
     }
 
     private CourseOfferingResponse toResponse(CourseOffering offering) {
-        Subject subject = offering.getSubject();
-        AcademicTerm term = offering.getTerm();
-        Section section = offering.getSection();
-        Teacher teacher = offering.getTeacher();
-        User teacherUser = teacher.getUser();
-
-        return new CourseOfferingResponse(
-                offering.getId(),
-                new CourseOfferingResponse.SubjectSummary(
-                        subject.getId(),
-                        subject.getCode(),
-                        subject.getName()
-                ),
-                new CourseOfferingResponse.TermSummary(
-                        term.getId(),
-                        term.getName(),
-                        term.getAcademicYear(),
-                        term.getStatus()
-                ),
-                new CourseOfferingResponse.SectionSummary(
-                        section.getId(),
-                        section.getName()
-                ),
-                new CourseOfferingResponse.TeacherSummary(
-                        teacher.getId(),
-                        teacher.getEmployeeCode(),
-                        teacherUser.getUsername(),
-                        teacherUser.getEmail()
-                ),
-                offering.getCapacity(),
-                offering.getEnrollmentOpenAt(),
-                offering.getEnrollmentCloseAt(),
-                offering.getStatus().name(),
-                offering.getCreatedAt(),
-                offering.getUpdatedAt()
-        );
+        return courseOfferingResponseMapper.toResponse(offering);
     }
 }
