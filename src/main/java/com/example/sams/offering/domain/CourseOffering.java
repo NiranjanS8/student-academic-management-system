@@ -17,6 +17,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -50,6 +51,18 @@ public class CourseOffering extends BaseEntity {
 
     @Column(nullable = false)
     private Integer capacity;
+
+    @Column(name = "room_code", length = 50)
+    private String roomCode;
+
+    @Column(name = "schedule_days", length = 50)
+    private String scheduleDays;
+
+    @Column(name = "schedule_start_time")
+    private LocalTime scheduleStartTime;
+
+    @Column(name = "schedule_end_time")
+    private LocalTime scheduleEndTime;
 
     @Column(name = "enrollment_open_at")
     private Instant enrollmentOpenAt;

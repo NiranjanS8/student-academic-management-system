@@ -1,6 +1,7 @@
 package com.example.sams.offering.dto;
 
 import java.time.Instant;
+import java.time.LocalTime;
 
 public record CourseOfferingResponse(
         Long id,
@@ -9,8 +10,13 @@ public record CourseOfferingResponse(
         SectionSummary section,
         TeacherSummary teacher,
         Integer capacity,
+        String roomCode,
+        String scheduleDays,
+        LocalTime scheduleStartTime,
+        LocalTime scheduleEndTime,
         Instant enrollmentOpenAt,
         Instant enrollmentCloseAt,
+        boolean enrollmentCurrentlyOpen,
         String status,
         Instant createdAt,
         Instant updatedAt

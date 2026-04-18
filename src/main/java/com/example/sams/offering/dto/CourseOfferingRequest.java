@@ -3,6 +3,7 @@ package com.example.sams.offering.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.time.LocalTime;
 
 public record CourseOfferingRequest(
         @NotNull(message = "subjectId is required")
@@ -16,6 +17,10 @@ public record CourseOfferingRequest(
         @NotNull(message = "capacity is required")
         @Min(value = 1, message = "capacity must be at least 1")
         Integer capacity,
+        String roomCode,
+        String scheduleDays,
+        LocalTime scheduleStartTime,
+        LocalTime scheduleEndTime,
         Instant enrollmentOpenAt,
         Instant enrollmentCloseAt,
         @NotNull(message = "status is required")

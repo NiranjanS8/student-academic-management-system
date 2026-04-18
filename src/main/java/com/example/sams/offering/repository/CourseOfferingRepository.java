@@ -61,4 +61,31 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             @Param("status") CourseOfferingStatus status,
             Pageable pageable
     );
+
+    @Query("""
+            select co from CourseOffering co
+            where co.section.id = :sectionId
+              and co.term.id = :termId
+              and (:subjectId is null or co.subject.id = :subjectId)
+              and (:status is null or co.status = :status)
+            """)
+    Page<CourseOffering> searchVisibleToStudent(
+            @Param("sectionId") Long sectionId,
+            @Param("termId") Long termId,
+            @Param("subjectId") Long subjectId,
+            @Param("status") CourseOfferingStatus status,
+            Pageable pageable
+    );
+
+    @Query("""
+            select co from CourseOffering co
+            where co.id = :offeringId
+              and co.section.id = :sectionId
+              and co.term.id = :termId
+            """)
+    Optional<CourseOffering> findVisibleToStudent(
+            @Param("offeringId") Long offeringId,
+            @Param("sectionId") Long sectionId,
+            @Param("termId") Long termId
+    );
 }

@@ -7,6 +7,7 @@ import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.dto.CourseOfferingResponse;
 import com.example.sams.user.domain.Teacher;
 import com.example.sams.user.domain.User;
+import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,6 +19,10 @@ public class CourseOfferingResponseMapper {
         Section section = offering.getSection();
         Teacher teacher = offering.getTeacher();
         User teacherUser = teacher.getUser();
+        Instant now = Instant.now();
+        boolean enrollmentCurrentlyOpen = offering.getStatus() == com.example.sams.offering.domain.CourseOfferingStatus.OPEN
+                && (offering.getEnrollmentOpenAt() == null || !now.isBefore(offering.getEnrollmentOpenAt()))
+                && (offering.getEnrollmentCloseAt() == null || !now.isAfter(offering.getEnrollmentCloseAt()));
 
         return new CourseOfferingResponse(
                 offering.getId(),
@@ -43,8 +48,13 @@ public class CourseOfferingResponseMapper {
                         teacherUser.getEmail()
                 ),
                 offering.getCapacity(),
+                offering.getRoomCode(),
+                offering.getScheduleDays(),
+                offering.getScheduleStartTime(),
+                offering.getScheduleEndTime(),
                 offering.getEnrollmentOpenAt(),
                 offering.getEnrollmentCloseAt(),
+                enrollmentCurrentlyOpen,
                 offering.getStatus().name(),
                 offering.getCreatedAt(),
                 offering.getUpdatedAt()

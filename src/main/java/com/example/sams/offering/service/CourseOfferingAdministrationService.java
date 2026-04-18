@@ -55,6 +55,7 @@ public class CourseOfferingAdministrationService {
         CourseOfferingStatus status = parseStatus(request.status());
 
         validateOfferingWindow(request.enrollmentOpenAt(), request.enrollmentCloseAt());
+        validateSchedule(request.scheduleStartTime(), request.scheduleEndTime());
 
         CourseOffering offering = new CourseOffering();
         offering.setSubject(subject);
@@ -62,6 +63,10 @@ public class CourseOfferingAdministrationService {
         offering.setSection(section);
         offering.setTeacher(teacher);
         offering.setCapacity(request.capacity());
+        offering.setRoomCode(normalize(request.roomCode()));
+        offering.setScheduleDays(normalize(request.scheduleDays()));
+        offering.setScheduleStartTime(request.scheduleStartTime());
+        offering.setScheduleEndTime(request.scheduleEndTime());
         offering.setEnrollmentOpenAt(request.enrollmentOpenAt());
         offering.setEnrollmentCloseAt(request.enrollmentCloseAt());
         offering.setStatus(status);
@@ -80,12 +85,17 @@ public class CourseOfferingAdministrationService {
         CourseOfferingStatus status = parseStatus(request.status());
 
         validateOfferingWindow(request.enrollmentOpenAt(), request.enrollmentCloseAt());
+        validateSchedule(request.scheduleStartTime(), request.scheduleEndTime());
 
         offering.setSubject(subject);
         offering.setTerm(term);
         offering.setSection(section);
         offering.setTeacher(teacher);
         offering.setCapacity(request.capacity());
+        offering.setRoomCode(normalize(request.roomCode()));
+        offering.setScheduleDays(normalize(request.scheduleDays()));
+        offering.setScheduleStartTime(request.scheduleStartTime());
+        offering.setScheduleEndTime(request.scheduleEndTime());
         offering.setEnrollmentOpenAt(request.enrollmentOpenAt());
         offering.setEnrollmentCloseAt(request.enrollmentCloseAt());
         offering.setStatus(status);
@@ -141,6 +151,19 @@ public class CourseOfferingAdministrationService {
         if (openAt != null && closeAt != null && closeAt.isBefore(openAt)) {
             throw new ConflictException("enrollmentCloseAt cannot be before enrollmentOpenAt");
         }
+    }
+
+    private void validateSchedule(java.time.LocalTime startTime, java.time.LocalTime endTime) {
+        if ((startTime == null) != (endTime == null)) {
+            throw new ConflictException("scheduleStartTime and scheduleEndTime must be provided together");
+        }
+        if (startTime != null && !endTime.isAfter(startTime)) {
+            throw new ConflictException("scheduleEndTime must be after scheduleStartTime");
+        }
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private CourseOfferingStatus parseStatus(String rawStatus) {

@@ -802,6 +802,166 @@ class AcademicAdministrationIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Course offering not found"));
     }
 
+    @Test
+    void adminCanManageCourseOfferingScheduleMetadata() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/sections")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "LAB",
+                                  "programId": %d,
+                                  "currentTermId": %d
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "DB404",
+                                  "name": "Database Systems",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-schedule",
+                                  "email": "teacher-schedule@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-SCHEDULE-01",
+                                  "departmentId": %d,
+                                  "designation": "Assistant Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("DB404").orElseThrow().getId();
+        Long sectionId = sectionRepository.findAll().stream()
+                .filter(section -> "LAB".equals(section.getName()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-SCHEDULE-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 48,
+                                  "roomCode": "B-201",
+                                  "scheduleDays": "MON,WED",
+                                  "scheduleStartTime": "09:00:00",
+                                  "scheduleEndTime": "10:30:00",
+                                  "enrollmentOpenAt": "2026-05-01T00:00:00Z",
+                                  "enrollmentCloseAt": "2026-05-25T00:00:00Z",
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), sectionId, teacherId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roomCode").value("B-201"))
+                .andExpect(jsonPath("$.data.scheduleDays").value("MON,WED"))
+                .andExpect(jsonPath("$.data.scheduleStartTime").value("09:00:00"))
+                .andExpect(jsonPath("$.data.scheduleEndTime").value("10:30:00"));
+    }
+
+    @Test
+    void adminCannotCreateCourseOfferingWithInvalidScheduleWindow() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/sections")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "TIME",
+                                  "programId": %d,
+                                  "currentTermId": %d
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "ML405",
+                                  "name": "Machine Learning",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-time",
+                                  "email": "teacher-time@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-TIME-01",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("ML405").orElseThrow().getId();
+        Long sectionId = sectionRepository.findAll().stream()
+                .filter(section -> "TIME".equals(section.getName()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-TIME-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "scheduleDays": "TUE",
+                                  "scheduleStartTime": "11:30:00",
+                                  "scheduleEndTime": "10:30:00",
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), sectionId, teacherId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("scheduleEndTime must be after scheduleStartTime"));
+    }
+
     private String extractAccessToken() throws Exception {
         return extractAccessToken("admin", "Admin@123");
     }
