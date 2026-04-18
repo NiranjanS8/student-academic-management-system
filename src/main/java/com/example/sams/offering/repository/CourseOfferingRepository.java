@@ -12,6 +12,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface CourseOfferingRepository extends JpaRepository<CourseOffering, Long> {
 
+    boolean existsBySubjectIdAndTermIdAndSectionId(Long subjectId, Long termId, Long sectionId);
+
+    boolean existsBySubjectIdAndTermIdAndSectionIdAndIdNot(Long subjectId, Long termId, Long sectionId, Long id);
+
     Page<CourseOffering> findAllByTermId(Long termId, Pageable pageable);
 
     Page<CourseOffering> findAllBySectionId(Long sectionId, Pageable pageable);

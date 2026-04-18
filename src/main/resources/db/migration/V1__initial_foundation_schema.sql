@@ -118,7 +118,8 @@ CREATE TABLE course_offerings (
     enrollment_close_at TIMESTAMP WITH TIME ZONE,
     status VARCHAR(30) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_course_offering_subject_term_section UNIQUE (subject_id, term_id, section_id)
 );
 
 CREATE TABLE enrollments (

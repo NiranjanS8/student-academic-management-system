@@ -54,6 +54,7 @@ public class CourseOfferingAdministrationService {
         Teacher teacher = getTeacher(request.teacherId());
         CourseOfferingStatus status = parseStatus(request.status());
 
+        validateOfferingIntegrity(subject, term, section, teacher, null);
         validateOfferingWindow(request.enrollmentOpenAt(), request.enrollmentCloseAt());
         validateSchedule(request.scheduleStartTime(), request.scheduleEndTime());
 
@@ -84,6 +85,7 @@ public class CourseOfferingAdministrationService {
         Teacher teacher = getTeacher(request.teacherId());
         CourseOfferingStatus status = parseStatus(request.status());
 
+        validateOfferingIntegrity(subject, term, section, teacher, offeringId);
         validateOfferingWindow(request.enrollmentOpenAt(), request.enrollmentCloseAt());
         validateSchedule(request.scheduleStartTime(), request.scheduleEndTime());
 
@@ -150,6 +152,34 @@ public class CourseOfferingAdministrationService {
     private void validateOfferingWindow(java.time.Instant openAt, java.time.Instant closeAt) {
         if (openAt != null && closeAt != null && closeAt.isBefore(openAt)) {
             throw new ConflictException("enrollmentCloseAt cannot be before enrollmentOpenAt");
+        }
+    }
+
+    private void validateOfferingIntegrity(
+            Subject subject,
+            AcademicTerm term,
+            Section section,
+            Teacher teacher,
+            Long existingOfferingId
+    ) {
+        boolean duplicateExists = existingOfferingId == null
+                ? courseOfferingRepository.existsBySubjectIdAndTermIdAndSectionId(subject.getId(), term.getId(), section.getId())
+                : courseOfferingRepository.existsBySubjectIdAndTermIdAndSectionIdAndIdNot(
+                        subject.getId(),
+                        term.getId(),
+                        section.getId(),
+                        existingOfferingId
+                );
+        if (duplicateExists) {
+            throw new ConflictException("An offering already exists for this subject, term, and section");
+        }
+
+        if (!teacher.getDepartment().getId().equals(subject.getDepartment().getId())) {
+            throw new ConflictException("Teacher department must match subject department");
+        }
+
+        if (section.getCurrentTerm() != null && !section.getCurrentTerm().getId().equals(term.getId())) {
+            throw new ConflictException("Section current term must match the offering term");
         }
     }
 

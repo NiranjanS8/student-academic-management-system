@@ -962,6 +962,167 @@ class AcademicAdministrationIntegrationTest {
                 .andExpect(jsonPath("$.message").value("scheduleEndTime must be after scheduleStartTime"));
     }
 
+    @Test
+    void adminCannotCreateDuplicateOfferingForSameSubjectTermAndSection() throws Exception {
+        String accessToken = extractAccessToken();
+
+        mockMvc.perform(post("/api/v1/admin/academic/sections")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "DUP",
+                                  "programId": %d,
+                                  "currentTermId": %d
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CN406",
+                                  "name": "Computer Networks Advanced",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-dup",
+                                  "email": "teacher-dup@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-DUP-01",
+                                  "departmentId": %d,
+                                  "designation": "Lecturer"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("CN406").orElseThrow().getId();
+        Long sectionId = sectionRepository.findAll().stream()
+                .filter(section -> "DUP".equals(section.getName()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-DUP-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        String requestBody = """
+                {
+                  "subjectId": %d,
+                  "termId": %d,
+                  "sectionId": %d,
+                  "teacherId": %d,
+                  "capacity": 55,
+                  "status": "OPEN"
+                }
+                """.formatted(subjectId, term.getId(), sectionId, teacherId);
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("An offering already exists for this subject, term, and section"));
+    }
+
+    @Test
+    void adminCannotAssignTeacherFromDifferentDepartmentToOffering() throws Exception {
+        String accessToken = extractAccessToken();
+
+        Department eceDepartment = new Department();
+        eceDepartment.setCode("ECE");
+        eceDepartment.setName("Electronics and Communication");
+        departmentRepository.save(eceDepartment);
+
+        mockMvc.perform(post("/api/v1/admin/academic/sections")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "MISMATCH",
+                                  "programId": %d,
+                                  "currentTermId": %d
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/academic/subjects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "AI406",
+                                  "name": "AI Systems",
+                                  "credits": 4.00,
+                                  "departmentId": %d,
+                                  "active": true
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/users/teachers")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "teacher-mismatch",
+                                  "email": "teacher-mismatch@sams.local",
+                                  "password": "Teacher@123",
+                                  "employeeCode": "EMP-MISMATCH-01",
+                                  "departmentId": %d,
+                                  "designation": "Professor"
+                                }
+                                """.formatted(eceDepartment.getId())))
+                .andExpect(status().isOk());
+
+        Long subjectId = subjectRepository.findByCodeIgnoreCase("AI406").orElseThrow().getId();
+        Long sectionId = sectionRepository.findAll().stream()
+                .filter(section -> "MISMATCH".equals(section.getName()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        Long teacherId = teacherRepository.findAll().stream()
+                .filter(teacher -> "EMP-MISMATCH-01".equals(teacher.getEmployeeCode()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 45,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subjectId, term.getId(), sectionId, teacherId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Teacher department must match subject department"));
+    }
+
     private String extractAccessToken() throws Exception {
         return extractAccessToken("admin", "Admin@123");
     }
