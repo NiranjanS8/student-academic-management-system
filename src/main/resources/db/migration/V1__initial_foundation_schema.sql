@@ -163,6 +163,49 @@ CREATE TABLE mark_entries (
     CONSTRAINT uk_mark_entry_exam_student UNIQUE (exam_id, student_id)
 );
 
+CREATE TABLE fee_structures (
+    id BIGSERIAL PRIMARY KEY,
+    program_id BIGINT NOT NULL REFERENCES programs(id),
+    term_id BIGINT NOT NULL REFERENCES academic_terms(id),
+    name VARCHAR(150) NOT NULL,
+    fee_category VARCHAR(50) NOT NULL,
+    amount NUMERIC(10,2) NOT NULL,
+    due_days_from_term_start INTEGER NOT NULL,
+    description VARCHAR(255),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE semester_fees (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL REFERENCES students(id),
+    term_id BIGINT NOT NULL REFERENCES academic_terms(id),
+    fee_structure_id BIGINT REFERENCES fee_structures(id),
+    base_amount NUMERIC(10,2) NOT NULL,
+    fine_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    total_payable NUMERIC(10,2) NOT NULL,
+    paid_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    due_date DATE NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_semester_fee_student_term UNIQUE (student_id, term_id)
+);
+
+CREATE TABLE payment_records (
+    id BIGSERIAL PRIMARY KEY,
+    semester_fee_id BIGINT NOT NULL REFERENCES semester_fees(id),
+    payment_reference VARCHAR(100) NOT NULL UNIQUE,
+    amount NUMERIC(10,2) NOT NULL,
+    payment_method VARCHAR(30) NOT NULL,
+    payment_status VARCHAR(30) NOT NULL,
+    paid_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    remarks VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX idx_programs_department_id ON programs(department_id);
 CREATE INDEX idx_sections_program_id ON sections(program_id);
@@ -178,3 +221,8 @@ CREATE INDEX idx_enrollments_course_offering_id ON enrollments(course_offering_i
 CREATE INDEX idx_exams_course_offering_id ON exams(course_offering_id);
 CREATE INDEX idx_mark_entries_exam_id ON mark_entries(exam_id);
 CREATE INDEX idx_mark_entries_student_id ON mark_entries(student_id);
+CREATE INDEX idx_fee_structures_program_id ON fee_structures(program_id);
+CREATE INDEX idx_fee_structures_term_id ON fee_structures(term_id);
+CREATE INDEX idx_semester_fees_student_id ON semester_fees(student_id);
+CREATE INDEX idx_semester_fees_term_id ON semester_fees(term_id);
+CREATE INDEX idx_payment_records_semester_fee_id ON payment_records(semester_fee_id);
