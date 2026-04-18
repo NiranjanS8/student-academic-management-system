@@ -46,10 +46,19 @@ public class StudentEnrollmentService {
         Student student = getAuthenticatedStudent();
         CourseOffering offering = getVisibleOffering(student, request.courseOfferingId());
 
-        enrollmentRepository.findByStudentIdAndCourseOfferingId(student.getId(), offering.getId())
-                .ifPresent(existing -> {
-                    throw new ConflictException("Enrollment record already exists for this offering");
-                });
+        Enrollment existingEnrollment = enrollmentRepository.findByStudentIdAndCourseOfferingId(student.getId(), offering.getId())
+                .orElse(null);
+
+        if (existingEnrollment != null) {
+            if (existingEnrollment.getStatus() == EnrollmentStatus.ENROLLED) {
+                throw new ConflictException("Student is already actively enrolled in this offering");
+            }
+
+            existingEnrollment.setStatus(EnrollmentStatus.ENROLLED);
+            existingEnrollment.setEnrolledAt(Instant.now());
+            existingEnrollment.setDroppedAt(null);
+            return enrollmentResponseMapper.toResponse(existingEnrollment);
+        }
 
         Enrollment enrollment = new Enrollment();
         enrollment.setStudent(student);
@@ -65,6 +74,10 @@ public class StudentEnrollmentService {
     public EnrollmentResponse drop(Long enrollmentId) {
         Enrollment enrollment = enrollmentRepository.findByIdAndStudentUserId(enrollmentId, getAuthenticatedUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("Enrollment not found"));
+
+        if (enrollment.getStatus() == EnrollmentStatus.DROPPED) {
+            throw new ConflictException("Enrollment is already dropped");
+        }
 
         enrollment.setStatus(EnrollmentStatus.DROPPED);
         enrollment.setDroppedAt(Instant.now());
