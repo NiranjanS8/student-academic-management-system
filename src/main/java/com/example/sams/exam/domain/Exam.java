@@ -49,4 +49,7 @@ public class Exam extends BaseEntity {
 
     @Column(name = "is_published", nullable = false)
     private boolean published;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
 }

@@ -24,6 +24,16 @@ public class GradeCalculationService {
         );
     }
 
+    public GradeSnapshot resolveGradeFromPercentage(BigDecimal percentageScore) {
+        GradeBand gradeBand = resolveGradeBand(percentageScore);
+        return new GradeSnapshot(
+                percentageScore,
+                percentageScore,
+                gradeBand.letterGrade(),
+                gradeBand.gradePoints()
+        );
+    }
+
     private GradeBand resolveGradeBand(BigDecimal percentageScore) {
         if (percentageScore.compareTo(new BigDecimal("90.00")) >= 0) {
             return new GradeBand("A+", new BigDecimal("4.00"));

@@ -12,6 +12,7 @@ public record ExamResponse(
         BigDecimal weightage,
         Instant scheduledAt,
         boolean published,
+        Instant publishedAt,
         Instant createdAt,
         Instant updatedAt
 ) {

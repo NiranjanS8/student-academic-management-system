@@ -47,4 +47,18 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             @Param("status") EnrollmentStatus status,
             Pageable pageable
     );
+
+    @Query("""
+            select distinct e from Enrollment e
+            join e.courseOffering co
+            join Exam exam on exam.courseOffering = co
+            where e.student.user.id = :userId
+              and (:termId is null or co.term.id = :termId)
+              and exam.published = true
+            """)
+    Page<Enrollment> findStudentResultEnrollments(
+            @Param("userId") Long userId,
+            @Param("termId") Long termId,
+            Pageable pageable
+    );
 }

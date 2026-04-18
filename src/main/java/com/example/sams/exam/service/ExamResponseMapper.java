@@ -17,6 +17,7 @@ public class ExamResponseMapper {
                 exam.getWeightage(),
                 exam.getScheduledAt(),
                 exam.isPublished(),
+                exam.getPublishedAt(),
                 exam.getCreatedAt(),
                 exam.getUpdatedAt()
         );

@@ -71,6 +71,11 @@ public class TeacherExamController {
         return ApiResponse.success("Mark entry updated successfully", teacherExamService.updateMarkEntry(examId, markEntryId, request));
     }
 
+    @PostMapping("/{examId}/publish")
+    public ApiResponse<ExamResponse> publishExam(@PathVariable Long examId) {
+        return ApiResponse.success("Exam results published successfully", teacherExamService.publishExam(examId));
+    }
+
     @GetMapping("/{examId}/marks")
     public ApiResponse<PageResponse<MarkEntryResponse>> listMarkEntries(
             @PathVariable Long examId,

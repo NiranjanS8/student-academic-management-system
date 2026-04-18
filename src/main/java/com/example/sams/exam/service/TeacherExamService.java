@@ -19,6 +19,7 @@ import com.example.sams.user.domain.Student;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.service.AppUserDetails;
 import java.math.BigDecimal;
+import java.time.Instant;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -144,6 +145,31 @@ public class TeacherExamService {
         getAssignedExamEntity(examId);
         return markEntryRepository.findAllByExamIdAndExamCourseOfferingTeacherUserId(examId, getAuthenticatedUserId(), pageable)
                 .map(markEntryResponseMapper::toResponse);
+    }
+
+    @Transactional
+    public ExamResponse publishExam(Long examId) {
+        Exam exam = getAssignedExamEntity(examId);
+        if (exam.isPublished()) {
+            throw new ConflictException("Exam results are already published");
+        }
+
+        long activeEnrollmentCount = enrollmentRepository.countByCourseOfferingIdAndStatus(
+                exam.getCourseOffering().getId(),
+                EnrollmentStatus.ENROLLED
+        );
+        long enteredMarkCount = markEntryRepository.countByExamId(examId);
+
+        if (activeEnrollmentCount == 0) {
+            throw new ConflictException("Cannot publish results without active enrollments");
+        }
+        if (enteredMarkCount < activeEnrollmentCount) {
+            throw new ConflictException("Cannot publish results until marks are entered for all actively enrolled students");
+        }
+
+        exam.setPublished(true);
+        exam.setPublishedAt(Instant.now());
+        return examResponseMapper.toResponse(exam);
     }
 
     private Exam getAssignedExamEntity(Long examId) {
