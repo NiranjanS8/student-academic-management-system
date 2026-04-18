@@ -3,6 +3,7 @@ package com.example.sams.fee;
 import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.domain.Department;
 import com.example.sams.academic.domain.Program;
+import com.example.sams.academic.domain.Section;
 import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
@@ -18,7 +19,9 @@ import com.example.sams.fee.repository.PaymentRecordRepository;
 import com.example.sams.fee.repository.SemesterFeeRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
+import com.example.sams.user.domain.AcademicStatus;
 import com.example.sams.user.domain.Role;
+import com.example.sams.user.domain.Student;
 import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
@@ -106,6 +109,7 @@ class FeeAdministrationIntegrationTest {
     private Department department;
     private Program program;
     private AcademicTerm term;
+    private Section section;
 
     @BeforeEach
     void setUp() {
@@ -145,6 +149,12 @@ class FeeAdministrationIntegrationTest {
         term.setEndDate(LocalDate.of(2026, 11, 30));
         term.setStatus("ACTIVE");
         academicTermRepository.save(term);
+
+        section = new Section();
+        section.setProgram(program);
+        section.setName("A");
+        section.setCurrentTerm(term);
+        sectionRepository.save(section);
 
         User admin = new User();
         admin.setUsername("admin");
@@ -291,6 +301,185 @@ class FeeAdministrationIntegrationTest {
                 .andExpect(jsonPath("$.data.active").value(true));
     }
 
+    @Test
+    void adminCanGenerateSemesterFeeAndRecordPartialAndFullPayments() throws Exception {
+        String accessToken = extractAccessToken();
+        Student student = createStudent("student-fee-01", "student-fee-01@sams.local", "STU-FEE-01");
+
+        mockMvc.perform(post("/api/v1/admin/fees/structures")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "programId": %d,
+                                  "termId": %d,
+                                  "name": "Tuition Fee",
+                                  "feeCategory": "tuition",
+                                  "amount": 50000.00,
+                                  "dueDaysFromTermStart": 12,
+                                  "description": "Core tuition",
+                                  "active": true
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/fees/structures")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "programId": %d,
+                                  "termId": %d,
+                                  "name": "Exam Fee",
+                                  "feeCategory": "exam",
+                                  "amount": 5000.00,
+                                  "dueDaysFromTermStart": 7,
+                                  "description": "Exam processing",
+                                  "active": true
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/generate")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "studentId": %d,
+                                  "termId": %d
+                                }
+                                """.formatted(student.getId(), term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.student.studentCode").value("STU-FEE-01"))
+                .andExpect(jsonPath("$.data.baseAmount").value(55000.0))
+                .andExpect(jsonPath("$.data.totalPayable").value(55000.0))
+                .andExpect(jsonPath("$.data.paidAmount").value(0.0))
+                .andExpect(jsonPath("$.data.outstandingAmount").value(55000.0))
+                .andExpect(jsonPath("$.data.dueDate").value("2026-06-08"))
+                .andExpect(jsonPath("$.data.status").value("DUE"));
+
+        Long semesterFeeId = semesterFeeRepository.findAll().stream().findFirst().orElseThrow().getId();
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/{semesterFeeId}/payments", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "paymentReference": "PAY-001",
+                                  "amount": 20000.00,
+                                  "paymentMethod": "upi",
+                                  "paidAt": "2026-06-05T10:00:00Z",
+                                  "remarks": "First installment"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentReference").value("PAY-001"))
+                .andExpect(jsonPath("$.data.amount").value(20000.0))
+                .andExpect(jsonPath("$.data.paymentMethod").value("UPI"))
+                .andExpect(jsonPath("$.data.paymentStatus").value("RECORDED"));
+
+        mockMvc.perform(get("/api/v1/admin/fees/semester-fees/{semesterFeeId}", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paidAmount").value(20000.0))
+                .andExpect(jsonPath("$.data.outstandingAmount").value(35000.0))
+                .andExpect(jsonPath("$.data.status").value("PARTIALLY_PAID"));
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/{semesterFeeId}/payments", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "paymentReference": "PAY-002",
+                                  "amount": 35000.00,
+                                  "paymentMethod": "bank_transfer",
+                                  "paidAt": "2026-06-10T10:00:00Z",
+                                  "remarks": "Final settlement"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentReference").value("PAY-002"))
+                .andExpect(jsonPath("$.data.amount").value(35000.0))
+                .andExpect(jsonPath("$.data.paymentMethod").value("BANK_TRANSFER"));
+
+        mockMvc.perform(get("/api/v1/admin/fees/semester-fees")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("studentId", String.valueOf(student.getId()))
+                        .param("termId", String.valueOf(term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].status").value("PAID"))
+                .andExpect(jsonPath("$.data.content[0].paidAmount").value(55000.0))
+                .andExpect(jsonPath("$.data.content[0].outstandingAmount").value(0.0));
+
+        mockMvc.perform(get("/api/v1/admin/fees/semester-fees/{semesterFeeId}/payments", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].paymentReference").value("PAY-002"))
+                .andExpect(jsonPath("$.data.content[1].paymentReference").value("PAY-001"));
+    }
+
+    @Test
+    void adminCannotGenerateDuplicateSemesterFeeOrOverpayOutstandingBalance() throws Exception {
+        String accessToken = extractAccessToken();
+        Student student = createStudent("student-fee-02", "student-fee-02@sams.local", "STU-FEE-02");
+
+        mockMvc.perform(post("/api/v1/admin/fees/structures")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "programId": %d,
+                                  "termId": %d,
+                                  "name": "Transport Fee",
+                                  "feeCategory": "transport",
+                                  "amount": 12000.00,
+                                  "dueDaysFromTermStart": 14,
+                                  "description": "Transport support",
+                                  "active": true
+                                }
+                                """.formatted(program.getId(), term.getId())))
+                .andExpect(status().isOk());
+
+        String generationBody = """
+                {
+                  "studentId": %d,
+                  "termId": %d
+                }
+                """.formatted(student.getId(), term.getId());
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/generate")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(generationBody))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/generate")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(generationBody))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Semester fee already exists for this student and term"));
+
+        Long semesterFeeId = semesterFeeRepository.findByStudentIdAndTermId(student.getId(), term.getId())
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/{semesterFeeId}/payments", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "paymentReference": "PAY-OVER",
+                                  "amount": 15000.00,
+                                  "paymentMethod": "cash",
+                                  "paidAt": "2026-06-05T10:00:00Z",
+                                  "remarks": "Too much"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Payment amount cannot exceed the outstanding balance"));
+    }
+
     private String extractAccessToken() throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -306,5 +495,26 @@ class FeeAdministrationIntegrationTest {
                 .getContentAsString();
 
         return response.split("\"accessToken\":\"")[1].split("\"")[0];
+    }
+
+    private Student createStudent(String username, String email, String studentCode) {
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode("Student@123"));
+        user.setRole(Role.STUDENT);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(user);
+
+        Student student = new Student();
+        student.setUser(user);
+        student.setStudentCode(studentCode);
+        student.setDepartment(department);
+        student.setProgram(program);
+        student.setCurrentTerm(term);
+        student.setSection(section);
+        student.setAcademicStatus(AcademicStatus.ACTIVE);
+        student.setAdmissionDate(LocalDate.of(2026, 4, 10));
+        return studentRepository.save(student);
     }
 }

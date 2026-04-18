@@ -2,6 +2,7 @@ package com.example.sams.fee.repository;
 
 import com.example.sams.fee.domain.FeeCategory;
 import com.example.sams.fee.domain.FeeStructure;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,4 +21,6 @@ public interface FeeStructureRepository extends JpaRepository<FeeStructure, Long
             Long termId,
             FeeCategory feeCategory
     );
+
+    List<FeeStructure> findAllByProgramIdAndTermIdAndActiveTrue(Long programId, Long termId);
 }

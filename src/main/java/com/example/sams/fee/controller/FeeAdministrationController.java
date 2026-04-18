@@ -5,6 +5,11 @@ import com.example.sams.common.api.PageResponse;
 import com.example.sams.common.api.PaginationUtils;
 import com.example.sams.fee.dto.FeeStructureRequest;
 import com.example.sams.fee.dto.FeeStructureResponse;
+import com.example.sams.fee.dto.PaymentRecordRequest;
+import com.example.sams.fee.dto.PaymentRecordResponse;
+import com.example.sams.fee.dto.SemesterFeeGenerationRequest;
+import com.example.sams.fee.dto.SemesterFeeResponse;
+import com.example.sams.fee.service.FeeOperationsService;
 import com.example.sams.fee.service.FeeStructureAdministrationService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -22,9 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class FeeAdministrationController {
 
     private final FeeStructureAdministrationService feeStructureAdministrationService;
+    private final FeeOperationsService feeOperationsService;
 
-    public FeeAdministrationController(FeeStructureAdministrationService feeStructureAdministrationService) {
+    public FeeAdministrationController(
+            FeeStructureAdministrationService feeStructureAdministrationService,
+            FeeOperationsService feeOperationsService
+    ) {
         this.feeStructureAdministrationService = feeStructureAdministrationService;
+        this.feeOperationsService = feeOperationsService;
     }
 
     @PostMapping("/structures")
@@ -67,6 +77,56 @@ public class FeeAdministrationController {
         return ApiResponse.success(
                 "Fee structures fetched successfully",
                 PageResponse.from(feeStructureAdministrationService.listFeeStructures(programId, termId, active, pageable))
+        );
+    }
+
+    @PostMapping("/semester-fees/generate")
+    public ApiResponse<SemesterFeeResponse> generateSemesterFee(@Valid @RequestBody SemesterFeeGenerationRequest request) {
+        return ApiResponse.success("Semester fee generated successfully", feeOperationsService.generateSemesterFee(request));
+    }
+
+    @GetMapping("/semester-fees/{semesterFeeId}")
+    public ApiResponse<SemesterFeeResponse> getSemesterFee(@PathVariable Long semesterFeeId) {
+        return ApiResponse.success("Semester fee fetched successfully", feeOperationsService.getSemesterFee(semesterFeeId));
+    }
+
+    @GetMapping("/semester-fees")
+    public ApiResponse<PageResponse<SemesterFeeResponse>> listSemesterFees(
+            @RequestParam(required = false) Long studentId,
+            @RequestParam(required = false) Long termId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Semester fees fetched successfully",
+                PageResponse.from(feeOperationsService.listSemesterFees(studentId, termId, status, pageable))
+        );
+    }
+
+    @PostMapping("/semester-fees/{semesterFeeId}/payments")
+    public ApiResponse<PaymentRecordResponse> recordPayment(
+            @PathVariable Long semesterFeeId,
+            @Valid @RequestBody PaymentRecordRequest request
+    ) {
+        return ApiResponse.success("Payment recorded successfully", feeOperationsService.recordPayment(semesterFeeId, request));
+    }
+
+    @GetMapping("/semester-fees/{semesterFeeId}/payments")
+    public ApiResponse<PageResponse<PaymentRecordResponse>> listPaymentHistory(
+            @PathVariable Long semesterFeeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "paidAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Payment history fetched successfully",
+                PageResponse.from(feeOperationsService.listPaymentHistory(semesterFeeId, pageable))
         );
     }
 }
