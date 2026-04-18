@@ -12,6 +12,7 @@ import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.domain.RefreshToken;
 import com.example.sams.auth.repository.RefreshTokenRepository;
+import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
 import com.example.sams.user.domain.Role;
@@ -76,6 +77,9 @@ class AuthIntegrationTest {
     private SubjectPrerequisiteRepository subjectPrerequisiteRepository;
 
     @Autowired
+    private CourseOfferingRepository courseOfferingRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private Department department;
@@ -87,6 +91,7 @@ class AuthIntegrationTest {
     void setUp() {
         refreshTokenRepository.deleteAll();
         studentRepository.deleteAll();
+        courseOfferingRepository.deleteAll();
         teacherRepository.deleteAll();
         userRepository.deleteAll();
         subjectPrerequisiteRepository.deleteAll();
