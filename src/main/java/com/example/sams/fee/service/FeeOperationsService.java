@@ -14,6 +14,7 @@ import com.example.sams.fee.dto.PaymentRecordRequest;
 import com.example.sams.fee.dto.PaymentRecordResponse;
 import com.example.sams.fee.dto.SemesterFeeGenerationRequest;
 import com.example.sams.fee.dto.SemesterFeeResponse;
+import com.example.sams.fee.dto.StudentFeeEligibilityResponse;
 import com.example.sams.fee.repository.FeeStructureRepository;
 import com.example.sams.fee.repository.PaymentRecordRepository;
 import com.example.sams.fee.repository.SemesterFeeRepository;
@@ -38,6 +39,7 @@ public class FeeOperationsService {
     private final AcademicTermRepository academicTermRepository;
     private final SemesterFeeResponseMapper semesterFeeResponseMapper;
     private final PaymentRecordResponseMapper paymentRecordResponseMapper;
+    private final FeePolicyService feePolicyService;
 
     public FeeOperationsService(
             FeeStructureRepository feeStructureRepository,
@@ -46,7 +48,8 @@ public class FeeOperationsService {
             StudentRepository studentRepository,
             AcademicTermRepository academicTermRepository,
             SemesterFeeResponseMapper semesterFeeResponseMapper,
-            PaymentRecordResponseMapper paymentRecordResponseMapper
+            PaymentRecordResponseMapper paymentRecordResponseMapper,
+            FeePolicyService feePolicyService
     ) {
         this.feeStructureRepository = feeStructureRepository;
         this.semesterFeeRepository = semesterFeeRepository;
@@ -55,6 +58,7 @@ public class FeeOperationsService {
         this.academicTermRepository = academicTermRepository;
         this.semesterFeeResponseMapper = semesterFeeResponseMapper;
         this.paymentRecordResponseMapper = paymentRecordResponseMapper;
+        this.feePolicyService = feePolicyService;
     }
 
     @Transactional
@@ -93,25 +97,30 @@ public class FeeOperationsService {
         semesterFee.setDueDate(term.getStartDate().plusDays(earliestDueDays));
         semesterFee.setStatus(SemesterFeeStatus.DUE);
         semesterFeeRepository.save(semesterFee);
+        feePolicyService.synchronizeFeeState(semesterFee);
 
         return semesterFeeResponseMapper.toResponse(semesterFee);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SemesterFeeResponse getSemesterFee(Long semesterFeeId) {
-        return semesterFeeResponseMapper.toResponse(getSemesterFeeEntity(semesterFeeId));
+        SemesterFee semesterFee = getSemesterFeeEntity(semesterFeeId);
+        feePolicyService.synchronizeFeeState(semesterFee);
+        return semesterFeeResponseMapper.toResponse(semesterFee);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Page<SemesterFeeResponse> listSemesterFees(Long studentId, Long termId, String status, Pageable pageable) {
         SemesterFeeStatus parsedStatus = parseSemesterFeeStatus(status);
         return semesterFeeRepository.search(studentId, termId, parsedStatus, pageable)
+                .map(feePolicyService::synchronizeFeeState)
                 .map(semesterFeeResponseMapper::toResponse);
     }
 
     @Transactional
     public PaymentRecordResponse recordPayment(Long semesterFeeId, PaymentRecordRequest request) {
         SemesterFee semesterFee = getSemesterFeeEntity(semesterFeeId);
+        feePolicyService.synchronizeFeeState(semesterFee);
         if (paymentRecordRepository.existsByPaymentReference(request.paymentReference().trim())) {
             throw new ConflictException("Payment reference already exists");
         }
@@ -132,7 +141,7 @@ public class FeeOperationsService {
         paymentRecordRepository.save(paymentRecord);
 
         semesterFee.setPaidAmount(semesterFee.getPaidAmount().add(request.amount()));
-        semesterFee.setStatus(resolveStatus(semesterFee));
+        feePolicyService.synchronizeFeeState(semesterFee);
 
         return paymentRecordResponseMapper.toResponse(paymentRecord);
     }
@@ -144,6 +153,13 @@ public class FeeOperationsService {
                 .map(paymentRecordResponseMapper::toResponse);
     }
 
+    @Transactional
+    public StudentFeeEligibilityResponse getStudentEligibility(Long studentId, Long termId) {
+        Student student = getStudent(studentId);
+        return feePolicyService.evaluateEligibility(student, termId);
+    }
+
+    @Transactional(readOnly = true)
     private SemesterFee getSemesterFeeEntity(Long semesterFeeId) {
         return semesterFeeRepository.findById(semesterFeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Semester fee not found"));
@@ -176,16 +192,6 @@ public class FeeOperationsService {
         } catch (IllegalArgumentException exception) {
             throw new ConflictException("Invalid paymentMethod. Allowed values: CASH, CARD, UPI, BANK_TRANSFER, SCHOLARSHIP");
         }
-    }
-
-    private SemesterFeeStatus resolveStatus(SemesterFee semesterFee) {
-        if (semesterFee.getPaidAmount().compareTo(semesterFee.getTotalPayable()) >= 0) {
-            return SemesterFeeStatus.PAID;
-        }
-        if (semesterFee.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
-            return SemesterFeeStatus.PARTIALLY_PAID;
-        }
-        return semesterFee.getDueDate().isBefore(LocalDate.now()) ? SemesterFeeStatus.OVERDUE : SemesterFeeStatus.DUE;
     }
 
     private String normalize(String value) {

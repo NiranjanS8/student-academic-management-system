@@ -2,6 +2,7 @@ package com.example.sams.fee.repository;
 
 import com.example.sams.fee.domain.SemesterFee;
 import com.example.sams.fee.domain.SemesterFeeStatus;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,4 +26,19 @@ public interface SemesterFeeRepository extends JpaRepository<SemesterFee, Long> 
             @Param("status") SemesterFeeStatus status,
             Pageable pageable
     );
+
+    Page<SemesterFee> findAllByStudentUserId(Long userId, Pageable pageable);
+
+    @Query("""
+            select sf from SemesterFee sf
+            where sf.student.id = :studentId
+              and sf.totalPayable > sf.paidAmount
+              and (:termId is null or sf.term.id <= :termId)
+            """)
+    List<SemesterFee> findBlockingDues(
+            @Param("studentId") Long studentId,
+            @Param("termId") Long termId
+    );
+
+    List<SemesterFee> findAllByStudentId(Long studentId);
 }

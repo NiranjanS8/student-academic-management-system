@@ -4,6 +4,7 @@ import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.domain.Department;
 import com.example.sams.academic.domain.Program;
 import com.example.sams.academic.domain.Section;
+import com.example.sams.academic.domain.Subject;
 import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
@@ -22,6 +23,7 @@ import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
 import com.example.sams.user.domain.Role;
 import com.example.sams.user.domain.Student;
+import com.example.sams.user.domain.Teacher;
 import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
@@ -480,15 +482,149 @@ class FeeAdministrationIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Payment amount cannot exceed the outstanding balance"));
     }
 
+    @Test
+    void overdueFeeAppliesFineAndBlocksEnrollmentAndHallTicketEligibility() throws Exception {
+        String accessToken = extractAccessToken();
+        Student student = createStudent("student-fee-03", "student-fee-03@sams.local", "STU-FEE-03");
+        AcademicTerm pastTerm = new AcademicTerm();
+        pastTerm.setName("Semester Past");
+        pastTerm.setAcademicYear("2025-2026");
+        pastTerm.setStartDate(LocalDate.of(2026, 1, 1));
+        pastTerm.setEndDate(LocalDate.of(2026, 5, 15));
+        pastTerm.setStatus("ACTIVE");
+        academicTermRepository.save(pastTerm);
+        Section pastSection = new Section();
+        pastSection.setProgram(program);
+        pastSection.setName("PAST");
+        pastSection.setCurrentTerm(pastTerm);
+        sectionRepository.save(pastSection);
+        student.setCurrentTerm(pastTerm);
+        student.setSection(pastSection);
+        studentRepository.save(student);
+
+        mockMvc.perform(post("/api/v1/admin/fees/structures")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "programId": %d,
+                                  "termId": %d,
+                                  "name": "Past Tuition Due",
+                                  "feeCategory": "tuition",
+                                  "amount": 10000.00,
+                                  "dueDaysFromTermStart": 0,
+                                  "description": "Old unpaid fee",
+                                  "active": true
+                                }
+                                """.formatted(program.getId(), pastTerm.getId())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/fees/semester-fees/generate")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "studentId": %d,
+                                  "termId": %d
+                                }
+                                """.formatted(student.getId(), pastTerm.getId())))
+                .andExpect(status().isOk());
+
+        Long semesterFeeId = semesterFeeRepository.findByStudentIdAndTermId(student.getId(), pastTerm.getId())
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(get("/api/v1/admin/fees/semester-fees/{semesterFeeId}", semesterFeeId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fineAmount").value(1000.0))
+                .andExpect(jsonPath("$.data.totalPayable").value(11000.0))
+                .andExpect(jsonPath("$.data.status").value("OVERDUE"))
+                .andExpect(jsonPath("$.data.outstandingAmount").value(11000.0));
+
+        String studentToken = extractAccessToken("student-fee-03", "Student@123");
+
+        mockMvc.perform(get("/api/v1/student/fees/eligibility")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .param("termId", String.valueOf(pastTerm.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enrollmentAllowed").value(false))
+                .andExpect(jsonPath("$.data.hallTicketEligible").value(false))
+                .andExpect(jsonPath("$.data.totalOutstandingAmount").value(11000.0))
+                .andExpect(jsonPath("$.data.overdueOutstandingAmount").value(11000.0))
+                .andExpect(jsonPath("$.data.blockers[0].status").value("OVERDUE"));
+
+        Subject subject = new Subject();
+        subject.setCode("FEE701");
+        subject.setName("Finance Restricted Enrollment");
+        subject.setCredits(new java.math.BigDecimal("4.00"));
+        subject.setDepartment(department);
+        subject.setActive(true);
+        subjectRepository.save(subject);
+
+        User teacherUser = new User();
+        teacherUser.setUsername("teacher-fee-block");
+        teacherUser.setEmail("teacher-fee-block@sams.local");
+        teacherUser.setPasswordHash(passwordEncoder.encode("Teacher@123"));
+        teacherUser.setRole(Role.TEACHER);
+        teacherUser.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(teacherUser);
+
+        Teacher teacher = new Teacher();
+        teacher.setUser(teacherUser);
+        teacher.setEmployeeCode("EMP-FEE-BLOCK-01");
+        teacher.setDepartment(department);
+        teacher.setDesignation("Professor");
+        teacherRepository.save(teacher);
+
+        mockMvc.perform(post("/api/v1/admin/offerings")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectId": %d,
+                                  "termId": %d,
+                                  "sectionId": %d,
+                                  "teacherId": %d,
+                                  "capacity": 40,
+                                  "status": "OPEN"
+                                }
+                                """.formatted(subject.getId(), pastTerm.getId(), pastSection.getId(), teacher.getId())))
+                .andExpect(status().isOk());
+
+        Long offeringId = courseOfferingRepository.findAllBySectionId(pastSection.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .filter(offering -> offering.getTerm().getId().equals(pastTerm.getId()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/v1/student/enrollments")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseOfferingId": %d
+                                }
+                                """.formatted(offeringId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Enrollment blocked due to unpaid dues"));
+    }
+
     private String extractAccessToken() throws Exception {
+        return extractAccessToken("admin", "Admin@123");
+    }
+
+    private String extractAccessToken(String username, String password) throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "username": "admin",
-                                  "password": "Admin@123"
+                                  "username": "%s",
+                                  "password": "%s"
                                 }
-                                """))
+                                """.formatted(username, password)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()

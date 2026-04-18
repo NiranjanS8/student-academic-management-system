@@ -8,6 +8,7 @@ import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.dto.EnrollmentRequest;
 import com.example.sams.enrollment.dto.EnrollmentResponse;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
+import com.example.sams.fee.service.FeePolicyService;
 import com.example.sams.offering.domain.CourseOfferingStatus;
 import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.repository.CourseOfferingRepository;
@@ -30,19 +31,22 @@ public class StudentEnrollmentService {
     private final StudentRepository studentRepository;
     private final EnrollmentResponseMapper enrollmentResponseMapper;
     private final EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator;
+    private final FeePolicyService feePolicyService;
 
     public StudentEnrollmentService(
             EnrollmentRepository enrollmentRepository,
             CourseOfferingRepository courseOfferingRepository,
             StudentRepository studentRepository,
             EnrollmentResponseMapper enrollmentResponseMapper,
-            EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator
+            EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator,
+            FeePolicyService feePolicyService
     ) {
         this.enrollmentRepository = enrollmentRepository;
         this.courseOfferingRepository = courseOfferingRepository;
         this.studentRepository = studentRepository;
         this.enrollmentResponseMapper = enrollmentResponseMapper;
         this.enrollmentPrerequisiteValidator = enrollmentPrerequisiteValidator;
+        this.feePolicyService = feePolicyService;
     }
 
     @Transactional
@@ -50,6 +54,7 @@ public class StudentEnrollmentService {
         Student student = getAuthenticatedStudent();
         CourseOffering offering = getVisibleOffering(student, request.courseOfferingId());
         validateOfferingIsEnrollAble(offering);
+        feePolicyService.assertEnrollmentAllowed(student, offering.getTerm().getId());
         enrollmentPrerequisiteValidator.validate(student, offering);
 
         Enrollment existingEnrollment = enrollmentRepository.findByStudentIdAndCourseOfferingId(student.getId(), offering.getId())
