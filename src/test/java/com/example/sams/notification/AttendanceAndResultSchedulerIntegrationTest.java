@@ -4,37 +4,49 @@ import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.domain.Department;
 import com.example.sams.academic.domain.Program;
 import com.example.sams.academic.domain.Section;
+import com.example.sams.academic.domain.Subject;
 import com.example.sams.academic.repository.AcademicTermRepository;
 import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
 import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
+import com.example.sams.attendance.domain.AttendanceRecord;
+import com.example.sams.attendance.domain.AttendanceSession;
+import com.example.sams.attendance.domain.AttendanceStatus;
 import com.example.sams.attendance.repository.AttendanceRecordRepository;
 import com.example.sams.attendance.repository.AttendanceSessionRepository;
 import com.example.sams.auth.repository.RefreshTokenRepository;
+import com.example.sams.enrollment.domain.Enrollment;
+import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.exam.repository.ExamRepository;
 import com.example.sams.exam.repository.MarkEntryRepository;
-import com.example.sams.fee.domain.SemesterFee;
-import com.example.sams.fee.domain.SemesterFeeStatus;
 import com.example.sams.fee.repository.FeeStructureRepository;
 import com.example.sams.fee.repository.PaymentRecordRepository;
 import com.example.sams.fee.repository.SemesterFeeRepository;
+import com.example.sams.notification.domain.Notification;
+import com.example.sams.notification.domain.NotificationType;
 import com.example.sams.notification.repository.NotificationRepository;
-import com.example.sams.notification.service.FeeReminderSchedulerService;
+import com.example.sams.notification.service.AttendanceShortageSchedulerService;
+import com.example.sams.notification.service.ResultReminderSchedulerService;
+import com.example.sams.offering.domain.CourseOffering;
+import com.example.sams.offering.domain.CourseOfferingStatus;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
 import com.example.sams.user.domain.Role;
 import com.example.sams.user.domain.Student;
+import com.example.sams.user.domain.Teacher;
 import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
 import com.example.sams.user.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,7 +66,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class FeeReminderSchedulerIntegrationTest {
+class AttendanceAndResultSchedulerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -126,11 +138,19 @@ class FeeReminderSchedulerIntegrationTest {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private FeeReminderSchedulerService feeReminderSchedulerService;
+    private AttendanceShortageSchedulerService attendanceShortageSchedulerService;
+
+    @Autowired
+    private ResultReminderSchedulerService resultReminderSchedulerService;
 
     private Department department;
     private Program program;
+    private AcademicTerm term;
+    private Section section;
+    private Subject subject;
+    private Teacher teacher;
     private Student student;
+    private CourseOffering offering;
 
     @BeforeEach
     void setUp() {
@@ -166,35 +186,59 @@ class FeeReminderSchedulerIntegrationTest {
         program.setDepartment(department);
         programRepository.save(program);
 
+        term = new AcademicTerm();
+        term.setName("Semester 1");
+        term.setAcademicYear("2026-2027");
+        term.setStartDate(LocalDate.of(2026, 6, 1));
+        term.setEndDate(LocalDate.of(2026, 11, 30));
+        term.setStatus("ACTIVE");
+        academicTermRepository.save(term);
+
+        section = new Section();
+        section.setProgram(program);
+        section.setName("A");
+        section.setCurrentTerm(term);
+        sectionRepository.save(section);
+
+        subject = new Subject();
+        subject.setDepartment(department);
+        subject.setCode("SE601");
+        subject.setName("Software Engineering");
+        subject.setCredits(new BigDecimal("3.00"));
+        subject.setActive(true);
+        subjectRepository.save(subject);
+
         createAdmin();
+        teacher = createTeacher();
         student = createStudent();
+        offering = createOffering();
     }
 
     @Test
-    void feeReminderJobCreatesUpcomingDueTodayAndOverdueNotificationsWithoutDuplicates() throws Exception {
-        LocalDate today = LocalDate.now();
+    void shortageAndResultReminderJobsCreateDedupedNotifications() throws Exception {
+        createEnrollment();
+        createAttendanceData();
+        createUnreadResultPublishedNotification();
 
-        createSemesterFee(createTerm("Semester 1", "2026-2027", today.minusDays(30), today.plusDays(60)), today.plusDays(3));
-        createSemesterFee(createTerm("Semester 2", "2026-2027", today.minusDays(90), today.plusDays(1)), today);
-        createSemesterFee(createTerm("Semester 3", "2025-2026", today.minusDays(180), today.minusDays(1)), today.minusDays(1));
+        int shortageFirstRun = attendanceShortageSchedulerService.processAttendanceShortages();
+        int shortageSecondRun = attendanceShortageSchedulerService.processAttendanceShortages();
+        int resultReminderFirstRun = resultReminderSchedulerService.processResultReminders(Instant.now());
+        int resultReminderSecondRun = resultReminderSchedulerService.processResultReminders(Instant.now());
 
-        int firstRunCount = feeReminderSchedulerService.processFeeDueReminders(today);
-        int secondRunCount = feeReminderSchedulerService.processFeeDueReminders(today);
+        assertThat(shortageFirstRun).isEqualTo(1);
+        assertThat(shortageSecondRun).isZero();
+        assertThat(resultReminderFirstRun).isEqualTo(1);
+        assertThat(resultReminderSecondRun).isZero();
 
-        assertThat(firstRunCount).isEqualTo(3);
-        assertThat(secondRunCount).isZero();
-        assertThat(notificationRepository.count()).isEqualTo(3);
-        assertThat(notificationRepository.findAll())
-                .extracting(notification -> notification.getTitle())
-                .containsExactlyInAnyOrder("Fee due reminder", "Fee due today", "Fee overdue");
-
-        String studentToken = extractAccessToken("student-fee-reminder", "Student@123");
+        String studentToken = extractAccessToken("student-attendance", "Student@123");
 
         mockMvc.perform(get("/api/v1/notifications/me")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(3))
-                .andExpect(jsonPath("$.data.content[0].type").value("FEE_DUE_REMINDER"));
+                .andExpect(jsonPath("$.data.content[0].type").value("RESULT_REMINDER"))
+                .andExpect(jsonPath("$.data.content[1].type").value("ATTENDANCE_WARNING"))
+                .andExpect(jsonPath("$.data.content[2].type").value("RESULT_PUBLISHED"));
     }
 
     private void createAdmin() {
@@ -207,23 +251,27 @@ class FeeReminderSchedulerIntegrationTest {
         userRepository.save(admin);
     }
 
+    private Teacher createTeacher() {
+        User teacherUser = new User();
+        teacherUser.setUsername("teacher-attendance");
+        teacherUser.setEmail("teacher-attendance@sams.local");
+        teacherUser.setPasswordHash(passwordEncoder.encode("Teacher@123"));
+        teacherUser.setRole(Role.TEACHER);
+        teacherUser.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(teacherUser);
+
+        Teacher entity = new Teacher();
+        entity.setUser(teacherUser);
+        entity.setEmployeeCode("EMP-ATTENDANCE");
+        entity.setDepartment(department);
+        entity.setDesignation("Assistant Professor");
+        return teacherRepository.save(entity);
+    }
+
     private Student createStudent() {
-        AcademicTerm currentTerm = createTerm(
-                "Current Semester",
-                "2026-2027",
-                LocalDate.now().minusDays(30),
-                LocalDate.now().plusDays(90)
-        );
-
-        Section section = new Section();
-        section.setProgram(program);
-        section.setName("A");
-        section.setCurrentTerm(currentTerm);
-        sectionRepository.save(section);
-
         User studentUser = new User();
-        studentUser.setUsername("student-fee-reminder");
-        studentUser.setEmail("student-fee-reminder@sams.local");
+        studentUser.setUsername("student-attendance");
+        studentUser.setEmail("student-attendance@sams.local");
         studentUser.setPasswordHash(passwordEncoder.encode("Student@123"));
         studentUser.setRole(Role.STUDENT);
         studentUser.setAccountStatus(AccountStatus.ACTIVE);
@@ -231,37 +279,76 @@ class FeeReminderSchedulerIntegrationTest {
 
         Student entity = new Student();
         entity.setUser(studentUser);
-        entity.setStudentCode("STU-FEE-REMINDER");
+        entity.setStudentCode("STU-ATTENDANCE");
         entity.setDepartment(department);
         entity.setProgram(program);
-        entity.setCurrentTerm(currentTerm);
+        entity.setCurrentTerm(term);
         entity.setSection(section);
         entity.setAcademicStatus(AcademicStatus.ACTIVE);
         entity.setAdmissionDate(LocalDate.of(2026, 4, 10));
         return studentRepository.save(entity);
     }
 
-    private AcademicTerm createTerm(String name, String academicYear, LocalDate startDate, LocalDate endDate) {
-        AcademicTerm term = new AcademicTerm();
-        term.setName(name);
-        term.setAcademicYear(academicYear);
-        term.setStartDate(startDate);
-        term.setEndDate(endDate);
-        term.setStatus("ACTIVE");
-        return academicTermRepository.save(term);
+    private CourseOffering createOffering() {
+        CourseOffering entity = new CourseOffering();
+        entity.setSubject(subject);
+        entity.setTerm(term);
+        entity.setSection(section);
+        entity.setTeacher(teacher);
+        entity.setCapacity(30);
+        entity.setRoomCode("R-101");
+        entity.setScheduleDays("MON,WED");
+        entity.setScheduleStartTime(LocalTime.of(10, 0));
+        entity.setScheduleEndTime(LocalTime.of(11, 0));
+        entity.setEnrollmentOpenAt(Instant.parse("2026-01-01T00:00:00Z"));
+        entity.setEnrollmentCloseAt(Instant.parse("2027-01-01T00:00:00Z"));
+        entity.setStatus(CourseOfferingStatus.OPEN);
+        return courseOfferingRepository.save(entity);
     }
 
-    private void createSemesterFee(AcademicTerm term, LocalDate dueDate) {
-        SemesterFee semesterFee = new SemesterFee();
-        semesterFee.setStudent(student);
-        semesterFee.setTerm(term);
-        semesterFee.setBaseAmount(new BigDecimal("10000.00"));
-        semesterFee.setFineAmount(BigDecimal.ZERO.setScale(2));
-        semesterFee.setTotalPayable(new BigDecimal("10000.00"));
-        semesterFee.setPaidAmount(BigDecimal.ZERO.setScale(2));
-        semesterFee.setDueDate(dueDate);
-        semesterFee.setStatus(SemesterFeeStatus.DUE);
-        semesterFeeRepository.save(semesterFee);
+    private void createEnrollment() {
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudent(student);
+        enrollment.setCourseOffering(offering);
+        enrollment.setStatus(EnrollmentStatus.ENROLLED);
+        enrollment.setEnrolledAt(Instant.now());
+        enrollmentRepository.save(enrollment);
+    }
+
+    private void createAttendanceData() {
+        AttendanceSession firstSession = createAttendanceSession(LocalDate.of(2026, 6, 10));
+        AttendanceSession secondSession = createAttendanceSession(LocalDate.of(2026, 6, 12));
+        AttendanceSession thirdSession = createAttendanceSession(LocalDate.of(2026, 6, 14));
+
+        createAttendanceRecord(firstSession, AttendanceStatus.PRESENT);
+        createAttendanceRecord(secondSession, AttendanceStatus.ABSENT);
+        createAttendanceRecord(thirdSession, AttendanceStatus.ABSENT);
+    }
+
+    private AttendanceSession createAttendanceSession(LocalDate sessionDate) {
+        AttendanceSession session = new AttendanceSession();
+        session.setCourseOffering(offering);
+        session.setSessionDate(sessionDate);
+        return attendanceSessionRepository.save(session);
+    }
+
+    private void createAttendanceRecord(AttendanceSession session, AttendanceStatus status) {
+        AttendanceRecord record = new AttendanceRecord();
+        record.setSession(session);
+        record.setStudent(student);
+        record.setStatus(status);
+        record.setMarkedAt(Instant.now());
+        attendanceRecordRepository.save(record);
+    }
+
+    private void createUnreadResultPublishedNotification() {
+        Notification notification = new Notification();
+        notification.setUser(student.getUser());
+        notification.setType(NotificationType.RESULT_PUBLISHED);
+        notification.setTitle("Result published");
+        notification.setMessage("Results for SE601 - Software Engineering (Midterm) are now available.");
+        notification.setRead(false);
+        notificationRepository.save(notification);
     }
 
     private String extractAccessToken(String username, String password) throws Exception {

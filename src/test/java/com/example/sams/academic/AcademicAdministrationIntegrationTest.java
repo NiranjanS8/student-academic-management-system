@@ -10,6 +10,8 @@ import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
 import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
+import com.example.sams.attendance.repository.AttendanceRecordRepository;
+import com.example.sams.attendance.repository.AttendanceSessionRepository;
 import com.example.sams.auth.repository.RefreshTokenRepository;
 import com.example.sams.notification.repository.NotificationRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
@@ -85,6 +87,12 @@ class AcademicAdministrationIntegrationTest {
     @Autowired
     private NotificationRepository notificationRepository;
 
+    @Autowired
+    private AttendanceRecordRepository attendanceRecordRepository;
+
+    @Autowired
+    private AttendanceSessionRepository attendanceSessionRepository;
+
     private Department department;
     private Program program;
     private AcademicTerm term;
@@ -92,6 +100,8 @@ class AcademicAdministrationIntegrationTest {
     @BeforeEach
     void setUp() {
         notificationRepository.deleteAll();
+        attendanceRecordRepository.deleteAll();
+        attendanceSessionRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         studentRepository.deleteAll();
         courseOfferingRepository.deleteAll();

@@ -20,6 +20,12 @@ security:
 
 sams:
   scheduler:
+    attendance-shortage:
+      cron: "0 0 8 * * *"
+      minimum-percentage: 75
     fee-reminder:
       cron: "0 0 9 * * *"
       upcoming-days: 3
+    result-reminder:
+      cron: "0 30 9 * * *"
+      delay-days: 0

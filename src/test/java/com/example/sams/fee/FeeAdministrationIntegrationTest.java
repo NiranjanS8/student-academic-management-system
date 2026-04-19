@@ -11,6 +11,8 @@ import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
 import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
+import com.example.sams.attendance.repository.AttendanceRecordRepository;
+import com.example.sams.attendance.repository.AttendanceSessionRepository;
 import com.example.sams.auth.repository.RefreshTokenRepository;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.exam.repository.ExamRepository;
@@ -112,6 +114,12 @@ class FeeAdministrationIntegrationTest {
     @Autowired
     private NotificationRepository notificationRepository;
 
+    @Autowired
+    private AttendanceRecordRepository attendanceRecordRepository;
+
+    @Autowired
+    private AttendanceSessionRepository attendanceSessionRepository;
+
     private Department department;
     private Program program;
     private AcademicTerm term;
@@ -120,6 +128,8 @@ class FeeAdministrationIntegrationTest {
     @BeforeEach
     void setUp() {
         notificationRepository.deleteAll();
+        attendanceRecordRepository.deleteAll();
+        attendanceSessionRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         paymentRecordRepository.deleteAll();
         semesterFeeRepository.deleteAll();
