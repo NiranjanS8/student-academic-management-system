@@ -48,6 +48,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -224,6 +225,30 @@ class AuditLogIntegrationTest {
                         .param("actorUserId", String.valueOf(admin.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(4));
+
+        mockMvc.perform(get("/api/v1/admin/audit/logs")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("createdFrom", LocalDate.now().toString())
+                        .param("createdTo", LocalDate.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(4));
+
+        mockMvc.perform(get("/api/v1/admin/audit/logs")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("createdFrom", LocalDate.now().plusDays(1).toString())
+                        .param("createdTo", LocalDate.now().plusDays(1).toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/admin/audit/logs/export")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("createdFrom", LocalDate.now().toString())
+                        .param("createdTo", LocalDate.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id,actionType,actorUserId")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PAYMENT_RECORDED")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PAY-001")));
     }
 
     private void createTeacher(String adminToken) throws Exception {
