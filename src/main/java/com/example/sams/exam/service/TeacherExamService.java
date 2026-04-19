@@ -1,6 +1,8 @@
 package com.example.sams.exam.service;
 
 import com.example.sams.auth.exception.AuthenticationException;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
@@ -40,6 +42,7 @@ public class TeacherExamService {
     private final MarkEntryResponseMapper markEntryResponseMapper;
     private final GradeCalculationService gradeCalculationService;
     private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
 
     public TeacherExamService(
             ExamRepository examRepository,
@@ -50,7 +53,8 @@ public class TeacherExamService {
             ExamResponseMapper examResponseMapper,
             MarkEntryResponseMapper markEntryResponseMapper,
             GradeCalculationService gradeCalculationService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            AuditLogService auditLogService
     ) {
         this.examRepository = examRepository;
         this.markEntryRepository = markEntryRepository;
@@ -61,6 +65,7 @@ public class TeacherExamService {
         this.markEntryResponseMapper = markEntryResponseMapper;
         this.gradeCalculationService = gradeCalculationService;
         this.notificationService = notificationService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -174,6 +179,15 @@ public class TeacherExamService {
         exam.setPublished(true);
         exam.setPublishedAt(Instant.now());
         notificationService.notifyExamPublished(exam);
+        auditLogService.log(
+                AuditActionType.EXAM_PUBLISHED,
+                "EXAM",
+                exam.getId(),
+                "Published results for %s (%s)".formatted(
+                        exam.getCourseOffering().getSubject().getCode(),
+                        exam.getTitle()
+                )
+        );
         return examResponseMapper.toResponse(exam);
     }
 

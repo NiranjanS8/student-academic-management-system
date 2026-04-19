@@ -9,6 +9,8 @@ import com.example.sams.academic.repository.DepartmentRepository;
 import com.example.sams.academic.repository.ProgramRepository;
 import com.example.sams.academic.repository.SectionRepository;
 import com.example.sams.auth.service.AuthService;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.user.domain.AcademicStatus;
@@ -37,6 +39,7 @@ public class UserProvisioningService {
     private final AcademicTermRepository academicTermRepository;
     private final SectionRepository sectionRepository;
     private final AuthService authService;
+    private final AuditLogService auditLogService;
 
     public UserProvisioningService(
             UserRepository userRepository,
@@ -46,7 +49,8 @@ public class UserProvisioningService {
             ProgramRepository programRepository,
             AcademicTermRepository academicTermRepository,
             SectionRepository sectionRepository,
-            AuthService authService
+            AuthService authService,
+            AuditLogService auditLogService
     ) {
         this.userRepository = userRepository;
         this.teacherRepository = teacherRepository;
@@ -56,6 +60,7 @@ public class UserProvisioningService {
         this.academicTermRepository = academicTermRepository;
         this.sectionRepository = sectionRepository;
         this.authService = authService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -77,6 +82,12 @@ public class UserProvisioningService {
         teacher.setDepartment(department);
         teacher.setDesignation(request.designation());
         teacherRepository.save(teacher);
+        auditLogService.log(
+                AuditActionType.USER_CREATED,
+                "TEACHER",
+                teacher.getId(),
+                "Created teacher account %s for %s".formatted(teacher.getEmployeeCode(), user.getUsername())
+        );
 
         return new UserProvisionResponse(
                 user.getId(),
@@ -118,6 +129,12 @@ public class UserProvisioningService {
         student.setAcademicStatus(parseAcademicStatus(request.academicStatus()));
         student.setAdmissionDate(request.admissionDate());
         studentRepository.save(student);
+        auditLogService.log(
+                AuditActionType.USER_CREATED,
+                "STUDENT",
+                student.getId(),
+                "Created student account %s for %s".formatted(student.getStudentCode(), user.getUsername())
+        );
 
         return new UserProvisionResponse(
                 user.getId(),

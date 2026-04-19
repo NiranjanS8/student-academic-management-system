@@ -1,6 +1,8 @@
 package com.example.sams.enrollment.service;
 
 import com.example.sams.auth.exception.AuthenticationException;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.enrollment.domain.Enrollment;
@@ -34,6 +36,7 @@ public class StudentEnrollmentService {
     private final EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator;
     private final FeePolicyService feePolicyService;
     private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
 
     public StudentEnrollmentService(
             EnrollmentRepository enrollmentRepository,
@@ -42,7 +45,8 @@ public class StudentEnrollmentService {
             EnrollmentResponseMapper enrollmentResponseMapper,
             EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator,
             FeePolicyService feePolicyService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            AuditLogService auditLogService
     ) {
         this.enrollmentRepository = enrollmentRepository;
         this.courseOfferingRepository = courseOfferingRepository;
@@ -51,6 +55,7 @@ public class StudentEnrollmentService {
         this.enrollmentPrerequisiteValidator = enrollmentPrerequisiteValidator;
         this.feePolicyService = feePolicyService;
         this.notificationService = notificationService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -73,6 +78,15 @@ public class StudentEnrollmentService {
             existingEnrollment.setEnrolledAt(Instant.now());
             existingEnrollment.setDroppedAt(null);
             notificationService.notifyEnrollmentConfirmed(existingEnrollment);
+            auditLogService.log(
+                    AuditActionType.ENROLLMENT_ENROLLED,
+                    "ENROLLMENT",
+                    existingEnrollment.getId(),
+                    "Student %s enrolled in %s".formatted(
+                            student.getStudentCode(),
+                            offering.getSubject().getCode()
+                    )
+            );
             return enrollmentResponseMapper.toResponse(existingEnrollment);
         }
 
@@ -83,6 +97,15 @@ public class StudentEnrollmentService {
         enrollment.setEnrolledAt(Instant.now());
         enrollmentRepository.save(enrollment);
         notificationService.notifyEnrollmentConfirmed(enrollment);
+        auditLogService.log(
+                AuditActionType.ENROLLMENT_ENROLLED,
+                "ENROLLMENT",
+                enrollment.getId(),
+                "Student %s enrolled in %s".formatted(
+                        student.getStudentCode(),
+                        offering.getSubject().getCode()
+                )
+        );
 
         return enrollmentResponseMapper.toResponse(enrollment);
     }
@@ -98,6 +121,15 @@ public class StudentEnrollmentService {
 
         enrollment.setStatus(EnrollmentStatus.DROPPED);
         enrollment.setDroppedAt(Instant.now());
+        auditLogService.log(
+                AuditActionType.ENROLLMENT_DROPPED,
+                "ENROLLMENT",
+                enrollment.getId(),
+                "Student %s dropped %s".formatted(
+                        enrollment.getStudent().getStudentCode(),
+                        enrollment.getCourseOffering().getSubject().getCode()
+                )
+        );
         return enrollmentResponseMapper.toResponse(enrollment);
     }
 

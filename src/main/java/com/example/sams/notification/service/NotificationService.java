@@ -1,6 +1,8 @@
 package com.example.sams.notification.service;
 
 import com.example.sams.auth.exception.AuthenticationException;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.enrollment.domain.Enrollment;
@@ -37,19 +39,22 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final AuditLogService auditLogService;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             NotificationResponseMapper notificationResponseMapper,
             UserRepository userRepository,
             CourseOfferingRepository courseOfferingRepository,
-            EnrollmentRepository enrollmentRepository
+            EnrollmentRepository enrollmentRepository,
+            AuditLogService auditLogService
     ) {
         this.notificationRepository = notificationRepository;
         this.notificationResponseMapper = notificationResponseMapper;
         this.userRepository = userRepository;
         this.courseOfferingRepository = courseOfferingRepository;
         this.enrollmentRepository = enrollmentRepository;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -117,6 +122,16 @@ public class NotificationService {
         );
 
         createNotifications(recipients, NotificationType.TEACHER_ANNOUNCEMENT, title, message);
+        auditLogService.log(
+                AuditActionType.ANNOUNCEMENT_PUBLISHED,
+                "COURSE_OFFERING",
+                offering.getId(),
+                "Published announcement '%s' for %s to %s students".formatted(
+                        title,
+                        offering.getSubject().getCode(),
+                        recipients.size()
+                )
+        );
 
         return new AnnouncementDispatchResponse(offering.getId(), title, recipients.size());
     }

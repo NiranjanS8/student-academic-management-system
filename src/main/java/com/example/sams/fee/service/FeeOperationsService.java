@@ -2,6 +2,8 @@ package com.example.sams.fee.service;
 
 import com.example.sams.academic.domain.AcademicTerm;
 import com.example.sams.academic.repository.AcademicTermRepository;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.fee.domain.FeeStructure;
@@ -40,6 +42,7 @@ public class FeeOperationsService {
     private final SemesterFeeResponseMapper semesterFeeResponseMapper;
     private final PaymentRecordResponseMapper paymentRecordResponseMapper;
     private final FeePolicyService feePolicyService;
+    private final AuditLogService auditLogService;
 
     public FeeOperationsService(
             FeeStructureRepository feeStructureRepository,
@@ -49,7 +52,8 @@ public class FeeOperationsService {
             AcademicTermRepository academicTermRepository,
             SemesterFeeResponseMapper semesterFeeResponseMapper,
             PaymentRecordResponseMapper paymentRecordResponseMapper,
-            FeePolicyService feePolicyService
+            FeePolicyService feePolicyService,
+            AuditLogService auditLogService
     ) {
         this.feeStructureRepository = feeStructureRepository;
         this.semesterFeeRepository = semesterFeeRepository;
@@ -59,6 +63,7 @@ public class FeeOperationsService {
         this.semesterFeeResponseMapper = semesterFeeResponseMapper;
         this.paymentRecordResponseMapper = paymentRecordResponseMapper;
         this.feePolicyService = feePolicyService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -98,6 +103,15 @@ public class FeeOperationsService {
         semesterFee.setStatus(SemesterFeeStatus.DUE);
         semesterFeeRepository.save(semesterFee);
         feePolicyService.synchronizeFeeState(semesterFee);
+        auditLogService.log(
+                AuditActionType.SEMESTER_FEE_GENERATED,
+                "SEMESTER_FEE",
+                semesterFee.getId(),
+                "Generated semester fee for %s in %s".formatted(
+                        student.getStudentCode(),
+                        term.getName()
+                )
+        );
 
         return semesterFeeResponseMapper.toResponse(semesterFee);
     }
@@ -142,6 +156,15 @@ public class FeeOperationsService {
 
         semesterFee.setPaidAmount(semesterFee.getPaidAmount().add(request.amount()));
         feePolicyService.synchronizeFeeState(semesterFee);
+        auditLogService.log(
+                AuditActionType.PAYMENT_RECORDED,
+                "PAYMENT",
+                paymentRecord.getId(),
+                "Recorded payment %s for semester fee %s".formatted(
+                        paymentRecord.getPaymentReference(),
+                        semesterFee.getId()
+                )
+        );
 
         return paymentRecordResponseMapper.toResponse(paymentRecord);
     }

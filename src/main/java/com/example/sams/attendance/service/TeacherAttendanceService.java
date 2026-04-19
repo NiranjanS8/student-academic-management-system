@@ -11,6 +11,8 @@ import com.example.sams.attendance.dto.AttendanceSessionUpdateRequest;
 import com.example.sams.attendance.repository.AttendanceRecordRepository;
 import com.example.sams.attendance.repository.AttendanceSessionRepository;
 import com.example.sams.auth.exception.AuthenticationException;
+import com.example.sams.audit.domain.AuditActionType;
+import com.example.sams.audit.service.AuditLogService;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.common.exception.ResourceNotFoundException;
 import com.example.sams.enrollment.domain.Enrollment;
@@ -40,19 +42,22 @@ public class TeacherAttendanceService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final AttendanceResponseMapper attendanceResponseMapper;
+    private final AuditLogService auditLogService;
 
     public TeacherAttendanceService(
             AttendanceSessionRepository attendanceSessionRepository,
             AttendanceRecordRepository attendanceRecordRepository,
             CourseOfferingRepository courseOfferingRepository,
             EnrollmentRepository enrollmentRepository,
-            AttendanceResponseMapper attendanceResponseMapper
+            AttendanceResponseMapper attendanceResponseMapper,
+            AuditLogService auditLogService
     ) {
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.courseOfferingRepository = courseOfferingRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.attendanceResponseMapper = attendanceResponseMapper;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -68,6 +73,16 @@ public class TeacherAttendanceService {
         attendanceSessionRepository.save(session);
 
         upsertAttendanceRecords(session, request.records(), false);
+        auditLogService.log(
+                AuditActionType.ATTENDANCE_SESSION_CREATED,
+                "ATTENDANCE_SESSION",
+                session.getId(),
+                "Created attendance session for %s on %s with %s records".formatted(
+                        session.getCourseOffering().getSubject().getCode(),
+                        session.getSessionDate(),
+                        request.records().size()
+                )
+        );
         return buildSessionResponse(session);
     }
 
@@ -75,6 +90,16 @@ public class TeacherAttendanceService {
     public AttendanceSessionResponse updateAttendanceSession(Long sessionId, AttendanceSessionUpdateRequest request) {
         AttendanceSession session = getAssignedSession(sessionId);
         upsertAttendanceRecords(session, request.records(), true);
+        auditLogService.log(
+                AuditActionType.ATTENDANCE_SESSION_UPDATED,
+                "ATTENDANCE_SESSION",
+                session.getId(),
+                "Updated attendance session for %s on %s with %s records".formatted(
+                        session.getCourseOffering().getSubject().getCode(),
+                        session.getSessionDate(),
+                        request.records().size()
+                )
+        );
         return buildSessionResponse(session);
     }
 
