@@ -13,6 +13,7 @@ import com.example.sams.exam.dto.MarkEntryRequest;
 import com.example.sams.exam.dto.MarkEntryResponse;
 import com.example.sams.exam.repository.ExamRepository;
 import com.example.sams.exam.repository.MarkEntryRepository;
+import com.example.sams.notification.service.NotificationService;
 import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.Student;
@@ -38,6 +39,7 @@ public class TeacherExamService {
     private final ExamResponseMapper examResponseMapper;
     private final MarkEntryResponseMapper markEntryResponseMapper;
     private final GradeCalculationService gradeCalculationService;
+    private final NotificationService notificationService;
 
     public TeacherExamService(
             ExamRepository examRepository,
@@ -47,7 +49,8 @@ public class TeacherExamService {
             EnrollmentRepository enrollmentRepository,
             ExamResponseMapper examResponseMapper,
             MarkEntryResponseMapper markEntryResponseMapper,
-            GradeCalculationService gradeCalculationService
+            GradeCalculationService gradeCalculationService,
+            NotificationService notificationService
     ) {
         this.examRepository = examRepository;
         this.markEntryRepository = markEntryRepository;
@@ -57,6 +60,7 @@ public class TeacherExamService {
         this.examResponseMapper = examResponseMapper;
         this.markEntryResponseMapper = markEntryResponseMapper;
         this.gradeCalculationService = gradeCalculationService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -169,6 +173,7 @@ public class TeacherExamService {
 
         exam.setPublished(true);
         exam.setPublishedAt(Instant.now());
+        notificationService.notifyExamPublished(exam);
         return examResponseMapper.toResponse(exam);
     }
 

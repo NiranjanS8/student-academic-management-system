@@ -36,3 +36,5 @@ temp/
 # Build outputs
 out/
 build/
+
+PROJECT_CONTEXT.md

@@ -18,6 +18,7 @@ import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.exam.repository.ExamRepository;
 import com.example.sams.exam.repository.MarkEntryRepository;
+import com.example.sams.notification.repository.NotificationRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
@@ -97,6 +98,9 @@ class AuthIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
     private Department department;
     private Program program;
     private AcademicTerm term;
@@ -104,6 +108,7 @@ class AuthIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         markEntryRepository.deleteAll();
         examRepository.deleteAll();

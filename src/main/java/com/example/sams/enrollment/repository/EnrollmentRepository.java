@@ -3,6 +3,7 @@ package com.example.sams.enrollment.repository;
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,8 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     Optional<Enrollment> findByIdAndStudentUserId(Long enrollmentId, Long userId);
 
     Optional<Enrollment> findByStudentIdAndCourseOfferingId(Long studentId, Long courseOfferingId);
+
+    List<Enrollment> findAllByCourseOfferingIdAndStatus(Long courseOfferingId, EnrollmentStatus status);
 
     long countByCourseOfferingIdAndStatus(Long courseOfferingId, EnrollmentStatus status);
 

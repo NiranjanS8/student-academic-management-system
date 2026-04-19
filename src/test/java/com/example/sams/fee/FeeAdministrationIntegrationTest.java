@@ -18,6 +18,7 @@ import com.example.sams.exam.repository.MarkEntryRepository;
 import com.example.sams.fee.repository.FeeStructureRepository;
 import com.example.sams.fee.repository.PaymentRecordRepository;
 import com.example.sams.fee.repository.SemesterFeeRepository;
+import com.example.sams.notification.repository.NotificationRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.AcademicStatus;
@@ -108,6 +109,9 @@ class FeeAdministrationIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
     private Department department;
     private Program program;
     private AcademicTerm term;
@@ -115,6 +119,7 @@ class FeeAdministrationIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         paymentRecordRepository.deleteAll();
         semesterFeeRepository.deleteAll();

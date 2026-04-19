@@ -9,6 +9,7 @@ import com.example.sams.enrollment.dto.EnrollmentRequest;
 import com.example.sams.enrollment.dto.EnrollmentResponse;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.fee.service.FeePolicyService;
+import com.example.sams.notification.service.NotificationService;
 import com.example.sams.offering.domain.CourseOfferingStatus;
 import com.example.sams.offering.domain.CourseOffering;
 import com.example.sams.offering.repository.CourseOfferingRepository;
@@ -32,6 +33,7 @@ public class StudentEnrollmentService {
     private final EnrollmentResponseMapper enrollmentResponseMapper;
     private final EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator;
     private final FeePolicyService feePolicyService;
+    private final NotificationService notificationService;
 
     public StudentEnrollmentService(
             EnrollmentRepository enrollmentRepository,
@@ -39,7 +41,8 @@ public class StudentEnrollmentService {
             StudentRepository studentRepository,
             EnrollmentResponseMapper enrollmentResponseMapper,
             EnrollmentPrerequisiteValidator enrollmentPrerequisiteValidator,
-            FeePolicyService feePolicyService
+            FeePolicyService feePolicyService,
+            NotificationService notificationService
     ) {
         this.enrollmentRepository = enrollmentRepository;
         this.courseOfferingRepository = courseOfferingRepository;
@@ -47,6 +50,7 @@ public class StudentEnrollmentService {
         this.enrollmentResponseMapper = enrollmentResponseMapper;
         this.enrollmentPrerequisiteValidator = enrollmentPrerequisiteValidator;
         this.feePolicyService = feePolicyService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -68,6 +72,7 @@ public class StudentEnrollmentService {
             existingEnrollment.setStatus(EnrollmentStatus.ENROLLED);
             existingEnrollment.setEnrolledAt(Instant.now());
             existingEnrollment.setDroppedAt(null);
+            notificationService.notifyEnrollmentConfirmed(existingEnrollment);
             return enrollmentResponseMapper.toResponse(existingEnrollment);
         }
 
@@ -77,6 +82,7 @@ public class StudentEnrollmentService {
         enrollment.setStatus(EnrollmentStatus.ENROLLED);
         enrollment.setEnrolledAt(Instant.now());
         enrollmentRepository.save(enrollment);
+        notificationService.notifyEnrollmentConfirmed(enrollment);
 
         return enrollmentResponseMapper.toResponse(enrollment);
     }

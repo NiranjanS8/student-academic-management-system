@@ -11,6 +11,7 @@ import com.example.sams.academic.repository.SectionRepository;
 import com.example.sams.academic.repository.SubjectPrerequisiteRepository;
 import com.example.sams.academic.repository.SubjectRepository;
 import com.example.sams.auth.repository.RefreshTokenRepository;
+import com.example.sams.notification.repository.NotificationRepository;
 import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.user.domain.AccountStatus;
 import com.example.sams.user.domain.Role;
@@ -81,12 +82,16 @@ class AcademicAdministrationIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
     private Department department;
     private Program program;
     private AcademicTerm term;
 
     @BeforeEach
     void setUp() {
+        notificationRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         studentRepository.deleteAll();
         courseOfferingRepository.deleteAll();
