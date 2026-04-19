@@ -59,6 +59,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -351,6 +352,37 @@ class AdminReportingIntegrationTest {
                 .andExpect(jsonPath("$.data.programs[0].studentCount").value(2))
                 .andExpect(jsonPath("$.data.terms[0].name").value("Semester 1 (2026-2027)"))
                 .andExpect(jsonPath("$.data.terms[0].studentCount").value(1));
+
+        mockMvc.perform(get("/api/v1/admin/reports/fee-defaulters/export")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("termId", String.valueOf(term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("semesterFeeId,studentId,studentCode")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("STU-REP-1")));
+
+        mockMvc.perform(get("/api/v1/admin/reports/attendance-shortages/export")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("termId", String.valueOf(term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("studentId,studentCode,studentUsername")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SE601")));
+
+        mockMvc.perform(get("/api/v1/admin/reports/teacher-workloads/export")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("departmentId", String.valueOf(program.getDepartment().getId())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("teacherId,employeeCode,teacherUsername")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("EMP-REP-1")));
+
+        mockMvc.perform(get("/api/v1/admin/reports/student-distribution/export")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("departmentId,departmentName,programId")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("MTech CSE")));
     }
 
     private void createAdmin() {
