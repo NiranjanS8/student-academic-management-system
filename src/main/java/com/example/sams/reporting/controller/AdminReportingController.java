@@ -4,9 +4,11 @@ import com.example.sams.common.api.ApiResponse;
 import com.example.sams.common.api.PageResponse;
 import com.example.sams.common.api.PaginationUtils;
 import com.example.sams.reporting.dto.AdminDashboardSummaryResponse;
+import com.example.sams.reporting.dto.AdminStudentAnalyticsSummaryResponse;
 import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
 import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
+import com.example.sams.reporting.dto.StudentDistributionReportResponse;
 import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
 import com.example.sams.reporting.dto.TeacherWorkloadReportResponse;
 import com.example.sams.reporting.service.AdminReportingService;
@@ -83,6 +85,33 @@ public class AdminReportingController {
         return ApiResponse.success(
                 "Student academic snapshot fetched successfully",
                 adminReportingService.getStudentAcademicSnapshot(studentId)
+        );
+    }
+
+    @GetMapping("/student-distribution")
+    public ApiResponse<PageResponse<StudentDistributionReportResponse>> getStudentDistribution(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long programId,
+            @RequestParam(required = false) Long termId,
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) String academicStatus,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "studentCount") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Student distribution report fetched successfully",
+                PageResponse.from(adminReportingService.getStudentDistribution(departmentId, programId, termId, sectionId, academicStatus, pageable))
+        );
+    }
+
+    @GetMapping("/student-analytics")
+    public ApiResponse<AdminStudentAnalyticsSummaryResponse> getStudentAnalytics() {
+        return ApiResponse.success(
+                "Student analytics summary fetched successfully",
+                adminReportingService.getStudentAnalyticsSummary()
         );
     }
 

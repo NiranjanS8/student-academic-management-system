@@ -2,6 +2,7 @@ package com.example.sams.reporting.service;
 
 import com.example.sams.attendance.service.AttendanceAnalyticsService;
 import com.example.sams.common.api.PageResponse;
+import com.example.sams.common.exception.ConflictException;
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
@@ -15,19 +16,24 @@ import com.example.sams.fee.domain.SemesterFee;
 import com.example.sams.fee.repository.SemesterFeeRepository;
 import com.example.sams.fee.service.FeePolicyService;
 import com.example.sams.offering.repository.CourseOfferingRepository;
+import com.example.sams.reporting.dto.AdminStudentAnalyticsSummaryResponse;
 import com.example.sams.reporting.dto.AdminDashboardSummaryResponse;
 import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
 import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
+import com.example.sams.reporting.dto.StudentDistributionReportResponse;
 import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
 import com.example.sams.reporting.dto.TeacherWorkloadReportResponse;
+import com.example.sams.user.domain.AcademicStatus;
 import com.example.sams.user.domain.Teacher;
 import com.example.sams.user.domain.Student;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -233,6 +239,80 @@ public class AdminReportingService {
     }
 
     @Transactional(readOnly = true)
+    public Page<StudentDistributionReportResponse> getStudentDistribution(
+            Long departmentId,
+            Long programId,
+            Long termId,
+            Long sectionId,
+            String academicStatus,
+            Pageable pageable
+    ) {
+        AcademicStatus parsedStatus = parseAcademicStatus(academicStatus);
+        List<StudentDistributionReportResponse> content = studentRepository.findAll().stream()
+                .filter(student -> departmentId == null || student.getDepartment().getId().equals(departmentId))
+                .filter(student -> programId == null || student.getProgram().getId().equals(programId))
+                .filter(student -> termId == null || (student.getCurrentTerm() != null && student.getCurrentTerm().getId().equals(termId)))
+                .filter(student -> sectionId == null || (student.getSection() != null && student.getSection().getId().equals(sectionId)))
+                .filter(student -> parsedStatus == null || student.getAcademicStatus() == parsedStatus)
+                .collect(java.util.stream.Collectors.groupingBy(
+                        student -> new StudentDistributionKey(
+                                student.getDepartment().getId(),
+                                student.getDepartment().getName(),
+                                student.getProgram().getId(),
+                                student.getProgram().getName(),
+                                student.getCurrentTerm() == null ? null : student.getCurrentTerm().getId(),
+                                student.getCurrentTerm() == null ? "Unassigned" : student.getCurrentTerm().getName(),
+                                student.getCurrentTerm() == null ? null : student.getCurrentTerm().getAcademicYear(),
+                                student.getSection() == null ? null : student.getSection().getId(),
+                                student.getSection() == null ? "Unassigned" : student.getSection().getName(),
+                                student.getAcademicStatus().name()
+                        ),
+                        java.util.stream.Collectors.counting()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new StudentDistributionReportResponse(
+                        entry.getKey().departmentId(),
+                        entry.getKey().departmentName(),
+                        entry.getKey().programId(),
+                        entry.getKey().programName(),
+                        entry.getKey().termId(),
+                        entry.getKey().termName(),
+                        entry.getKey().academicYear(),
+                        entry.getKey().sectionId(),
+                        entry.getKey().sectionName(),
+                        entry.getKey().academicStatus(),
+                        entry.getValue()
+                ))
+                .sorted(studentDistributionComparator(pageable))
+                .toList();
+
+        return page(content, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminStudentAnalyticsSummaryResponse getStudentAnalyticsSummary() {
+        List<Student> students = studentRepository.findAll();
+
+        return new AdminStudentAnalyticsSummaryResponse(
+                students.size(),
+                students.stream().filter(student -> student.getAcademicStatus() == AcademicStatus.ACTIVE).count(),
+                students.stream().filter(student -> student.getAcademicStatus() == AcademicStatus.ON_HOLD).count(),
+                students.stream().filter(student -> student.getAcademicStatus() == AcademicStatus.GRADUATED).count(),
+                students.stream().filter(student -> student.getAcademicStatus() == AcademicStatus.DROPPED).count(),
+                students.stream().filter(student -> student.getSection() == null).count(),
+                students.stream().filter(student -> student.getCurrentTerm() == null).count(),
+                buildBreakdown(students, student -> student.getDepartment().getId(), student -> student.getDepartment().getName()),
+                buildBreakdown(students, student -> student.getProgram().getId(), student -> student.getProgram().getName()),
+                buildBreakdown(
+                        students.stream().filter(student -> student.getCurrentTerm() != null).toList(),
+                        student -> student.getCurrentTerm().getId(),
+                        student -> "%s (%s)".formatted(student.getCurrentTerm().getName(), student.getCurrentTerm().getAcademicYear())
+                )
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Page<TeacherWorkloadReportResponse> getTeacherWorkloads(Long departmentId, Long termId, String query, Pageable pageable) {
         List<TeacherWorkloadReportResponse> content = teacherRepository.search(departmentId, normalize(query), Pageable.unpaged())
                 .stream()
@@ -347,5 +427,79 @@ public class AdminReportingService {
                 publishedExamCount,
                 averageCapacityUtilization
         );
+    }
+
+    private Comparator<StudentDistributionReportResponse> studentDistributionComparator(Pageable pageable) {
+        String sortBy = pageable.getSort().stream().findFirst().map(org.springframework.data.domain.Sort.Order::getProperty).orElse("studentCount");
+        boolean descending = pageable.getSort().stream().findFirst().map(org.springframework.data.domain.Sort.Order::isDescending).orElse(true);
+
+        Comparator<StudentDistributionReportResponse> comparator = switch (sortBy) {
+            case "departmentName" -> Comparator.comparing(StudentDistributionReportResponse::departmentName, String.CASE_INSENSITIVE_ORDER);
+            case "programName" -> Comparator.comparing(StudentDistributionReportResponse::programName, String.CASE_INSENSITIVE_ORDER);
+            case "termName" -> Comparator.comparing(StudentDistributionReportResponse::termName, String.CASE_INSENSITIVE_ORDER);
+            case "sectionName" -> Comparator.comparing(StudentDistributionReportResponse::sectionName, String.CASE_INSENSITIVE_ORDER);
+            case "academicStatus" -> Comparator.comparing(StudentDistributionReportResponse::academicStatus, String.CASE_INSENSITIVE_ORDER);
+            default -> Comparator.comparingLong(StudentDistributionReportResponse::studentCount);
+        };
+
+        if (descending) {
+            comparator = comparator.reversed();
+        }
+        return comparator.thenComparing(StudentDistributionReportResponse::programName, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(StudentDistributionReportResponse::sectionName, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private Page<StudentDistributionReportResponse> page(List<StudentDistributionReportResponse> content, Pageable pageable) {
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), content.size());
+        List<StudentDistributionReportResponse> pageContent = start >= content.size() ? List.of() : content.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, content.size());
+    }
+
+    private List<AdminStudentAnalyticsSummaryResponse.CountBreakdown> buildBreakdown(
+            List<Student> students,
+            java.util.function.Function<Student, Long> idExtractor,
+            java.util.function.Function<Student, String> nameExtractor
+    ) {
+        return students.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        student -> Map.entry(idExtractor.apply(student), nameExtractor.apply(student)),
+                        java.util.stream.Collectors.counting()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new AdminStudentAnalyticsSummaryResponse.CountBreakdown(
+                        entry.getKey().getKey(),
+                        entry.getKey().getValue(),
+                        entry.getValue()
+                ))
+                .sorted(Comparator.comparingLong(AdminStudentAnalyticsSummaryResponse.CountBreakdown::studentCount).reversed()
+                        .thenComparing(AdminStudentAnalyticsSummaryResponse.CountBreakdown::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private AcademicStatus parseAcademicStatus(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return null;
+        }
+        try {
+            return AcademicStatus.valueOf(rawStatus.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new ConflictException("Invalid academicStatus. Allowed values: ACTIVE, ON_HOLD, GRADUATED, DROPPED");
+        }
+    }
+
+    private record StudentDistributionKey(
+            Long departmentId,
+            String departmentName,
+            Long programId,
+            String programName,
+            Long termId,
+            String termName,
+            String academicYear,
+            Long sectionId,
+            String sectionName,
+            String academicStatus
+    ) {
     }
 }

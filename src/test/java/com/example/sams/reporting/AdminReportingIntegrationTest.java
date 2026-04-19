@@ -140,11 +140,16 @@ class AdminReportingIntegrationTest {
     private com.example.sams.exam.service.GradeCalculationService gradeCalculationService;
 
     private Program program;
+    private Program secondProgram;
     private Section section;
+    private Section secondSection;
     private AcademicTerm term;
+    private AcademicTerm secondTerm;
     private Teacher teacher;
     private Teacher secondTeacher;
     private Student student;
+    private Student secondStudent;
+    private Student thirdStudent;
     private CourseOffering offering;
 
     @BeforeEach
@@ -181,6 +186,12 @@ class AdminReportingIntegrationTest {
         program.setDepartment(department);
         programRepository.save(program);
 
+        secondProgram = new Program();
+        secondProgram.setCode("MTECH-CSE");
+        secondProgram.setName("MTech CSE");
+        secondProgram.setDepartment(department);
+        programRepository.save(secondProgram);
+
         term = new AcademicTerm();
         term.setName("Semester 1");
         term.setAcademicYear("2026-2027");
@@ -189,11 +200,25 @@ class AdminReportingIntegrationTest {
         term.setStatus("ACTIVE");
         academicTermRepository.save(term);
 
+        secondTerm = new AcademicTerm();
+        secondTerm.setName("Semester 2");
+        secondTerm.setAcademicYear("2026-2027");
+        secondTerm.setStartDate(LocalDate.of(2027, 1, 5));
+        secondTerm.setEndDate(LocalDate.of(2027, 6, 1));
+        secondTerm.setStatus("PLANNED");
+        academicTermRepository.save(secondTerm);
+
         section = new Section();
         section.setProgram(program);
         section.setName("A");
         section.setCurrentTerm(term);
         sectionRepository.save(section);
+
+        secondSection = new Section();
+        secondSection.setProgram(secondProgram);
+        secondSection.setName("B");
+        secondSection.setCurrentTerm(secondTerm);
+        sectionRepository.save(secondSection);
 
         Subject subject = new Subject();
         subject.setDepartment(department);
@@ -207,6 +232,8 @@ class AdminReportingIntegrationTest {
         teacher = createTeacher(department);
         secondTeacher = createSecondTeacher(department);
         student = createStudent(department);
+        secondStudent = createSecondStudent(department);
+        thirdStudent = createThirdStudent(department);
         offering = createOffering(subject);
         createEnrollment();
         createPublishedExamWithMarks();
@@ -221,7 +248,7 @@ class AdminReportingIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/reports/dashboard")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalStudents").value(1))
+                .andExpect(jsonPath("$.data.totalStudents").value(3))
                 .andExpect(jsonPath("$.data.totalTeachers").value(2))
                 .andExpect(jsonPath("$.data.totalOfferings").value(1))
                 .andExpect(jsonPath("$.data.activeEnrollments").value(1))
@@ -284,6 +311,46 @@ class AdminReportingIntegrationTest {
                 .andExpect(jsonPath("$.data.content[0].totalAssignedStudents").value(1))
                 .andExpect(jsonPath("$.data.content[0].publishedExamCount").value(1))
                 .andExpect(jsonPath("$.data.content[0].averageCapacityUtilization").value(3.33));
+
+        mockMvc.perform(get("/api/v1/admin/reports/student-distribution")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("departmentId", String.valueOf(program.getDepartment().getId()))
+                        .param("sortBy", "studentCount")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(3))
+                .andExpect(jsonPath("$.data.content[0].departmentName").value("Computer Science"))
+                .andExpect(jsonPath("$.data.content[0].programName").value("BTech CSE"))
+                .andExpect(jsonPath("$.data.content[0].termName").value("Semester 1"))
+                .andExpect(jsonPath("$.data.content[0].sectionName").value("A"))
+                .andExpect(jsonPath("$.data.content[0].academicStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.content[0].studentCount").value(1));
+
+        mockMvc.perform(get("/api/v1/admin/reports/student-distribution")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("academicStatus", "ON_HOLD"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].programName").value("MTech CSE"))
+                .andExpect(jsonPath("$.data.content[0].sectionName").value("B"))
+                .andExpect(jsonPath("$.data.content[0].studentCount").value(1));
+
+        mockMvc.perform(get("/api/v1/admin/reports/student-analytics")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalStudents").value(3))
+                .andExpect(jsonPath("$.data.activeStudents").value(1))
+                .andExpect(jsonPath("$.data.onHoldStudents").value(1))
+                .andExpect(jsonPath("$.data.graduatedStudents").value(1))
+                .andExpect(jsonPath("$.data.droppedStudents").value(0))
+                .andExpect(jsonPath("$.data.studentsWithoutSection").value(1))
+                .andExpect(jsonPath("$.data.studentsWithoutCurrentTerm").value(1))
+                .andExpect(jsonPath("$.data.departments[0].name").value("Computer Science"))
+                .andExpect(jsonPath("$.data.departments[0].studentCount").value(3))
+                .andExpect(jsonPath("$.data.programs[0].name").value("BTech CSE"))
+                .andExpect(jsonPath("$.data.programs[0].studentCount").value(2))
+                .andExpect(jsonPath("$.data.terms[0].name").value("Semester 1 (2026-2027)"))
+                .andExpect(jsonPath("$.data.terms[0].studentCount").value(1));
     }
 
     private void createAdmin() {
@@ -348,6 +415,48 @@ class AdminReportingIntegrationTest {
         entity.setSection(section);
         entity.setAcademicStatus(AcademicStatus.ACTIVE);
         entity.setAdmissionDate(LocalDate.of(2026, 4, 10));
+        return studentRepository.save(entity);
+    }
+
+    private Student createSecondStudent(Department department) {
+        User studentUser = new User();
+        studentUser.setUsername("student-onhold");
+        studentUser.setEmail("student-onhold@sams.local");
+        studentUser.setPasswordHash(passwordEncoder.encode("Student@123"));
+        studentUser.setRole(Role.STUDENT);
+        studentUser.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(studentUser);
+
+        Student entity = new Student();
+        entity.setUser(studentUser);
+        entity.setStudentCode("STU-REP-2");
+        entity.setDepartment(department);
+        entity.setProgram(secondProgram);
+        entity.setCurrentTerm(secondTerm);
+        entity.setSection(secondSection);
+        entity.setAcademicStatus(AcademicStatus.ON_HOLD);
+        entity.setAdmissionDate(LocalDate.of(2026, 4, 12));
+        return studentRepository.save(entity);
+    }
+
+    private Student createThirdStudent(Department department) {
+        User studentUser = new User();
+        studentUser.setUsername("student-grad");
+        studentUser.setEmail("student-grad@sams.local");
+        studentUser.setPasswordHash(passwordEncoder.encode("Student@123"));
+        studentUser.setRole(Role.STUDENT);
+        studentUser.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(studentUser);
+
+        Student entity = new Student();
+        entity.setUser(studentUser);
+        entity.setStudentCode("STU-REP-3");
+        entity.setDepartment(department);
+        entity.setProgram(program);
+        entity.setCurrentTerm(null);
+        entity.setSection(null);
+        entity.setAcademicStatus(AcademicStatus.GRADUATED);
+        entity.setAdmissionDate(LocalDate.of(2023, 4, 12));
         return studentRepository.save(entity);
     }
 
