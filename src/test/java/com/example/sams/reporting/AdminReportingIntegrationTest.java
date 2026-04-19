@@ -143,6 +143,7 @@ class AdminReportingIntegrationTest {
     private Section section;
     private AcademicTerm term;
     private Teacher teacher;
+    private Teacher secondTeacher;
     private Student student;
     private CourseOffering offering;
 
@@ -204,6 +205,7 @@ class AdminReportingIntegrationTest {
 
         createAdmin();
         teacher = createTeacher(department);
+        secondTeacher = createSecondTeacher(department);
         student = createStudent(department);
         offering = createOffering(subject);
         createEnrollment();
@@ -220,7 +222,7 @@ class AdminReportingIntegrationTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalStudents").value(1))
-                .andExpect(jsonPath("$.data.totalTeachers").value(1))
+                .andExpect(jsonPath("$.data.totalTeachers").value(2))
                 .andExpect(jsonPath("$.data.totalOfferings").value(1))
                 .andExpect(jsonPath("$.data.activeEnrollments").value(1))
                 .andExpect(jsonPath("$.data.publishedResults").value(1))
@@ -265,6 +267,23 @@ class AdminReportingIntegrationTest {
                 .andExpect(jsonPath("$.data.summary.totalCompletedCredits").value(3.00))
                 .andExpect(jsonPath("$.data.publishedResults[0].subjectCode").value("SE601"))
                 .andExpect(jsonPath("$.data.publishedResults[0].resultStatus").value("FINAL"));
+
+        mockMvc.perform(get("/api/v1/admin/reports/teacher-workloads")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("departmentId", String.valueOf(program.getDepartment().getId()))
+                        .param("termId", String.valueOf(term.getId()))
+                        .param("query", "EMP-REP")
+                        .param("sortBy", "employeeCode")
+                        .param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].employeeCode").value("EMP-REP-1"))
+                .andExpect(jsonPath("$.data.content[0].teacherUsername").value("teacher-report"))
+                .andExpect(jsonPath("$.data.content[0].totalOfferings").value(1))
+                .andExpect(jsonPath("$.data.content[0].openOfferings").value(1))
+                .andExpect(jsonPath("$.data.content[0].totalAssignedStudents").value(1))
+                .andExpect(jsonPath("$.data.content[0].publishedExamCount").value(1))
+                .andExpect(jsonPath("$.data.content[0].averageCapacityUtilization").value(3.33));
     }
 
     private void createAdmin() {
@@ -291,6 +310,23 @@ class AdminReportingIntegrationTest {
         entity.setEmployeeCode("EMP-REP-1");
         entity.setDepartment(department);
         entity.setDesignation("Assistant Professor");
+        return teacherRepository.save(entity);
+    }
+
+    private Teacher createSecondTeacher(Department department) {
+        User teacherUser = new User();
+        teacherUser.setUsername("teacher-idle");
+        teacherUser.setEmail("teacher-idle@sams.local");
+        teacherUser.setPasswordHash(passwordEncoder.encode("Teacher@123"));
+        teacherUser.setRole(Role.TEACHER);
+        teacherUser.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(teacherUser);
+
+        Teacher entity = new Teacher();
+        entity.setUser(teacherUser);
+        entity.setEmployeeCode("EMP-IDLE-1");
+        entity.setDepartment(department);
+        entity.setDesignation("Lecturer");
         return teacherRepository.save(entity);
     }
 

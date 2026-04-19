@@ -8,6 +8,7 @@ import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
 import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
 import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
+import com.example.sams.reporting.dto.TeacherWorkloadReportResponse;
 import com.example.sams.reporting.service.AdminReportingService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -82,6 +83,23 @@ public class AdminReportingController {
         return ApiResponse.success(
                 "Student academic snapshot fetched successfully",
                 adminReportingService.getStudentAcademicSnapshot(studentId)
+        );
+    }
+
+    @GetMapping("/teacher-workloads")
+    public ApiResponse<PageResponse<TeacherWorkloadReportResponse>> getTeacherWorkloads(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long termId,
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "employeeCode") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        Pageable pageable = PaginationUtils.buildPageable(page, size, sortBy, direction);
+        return ApiResponse.success(
+                "Teacher workload report fetched successfully",
+                PageResponse.from(adminReportingService.getTeacherWorkloads(departmentId, termId, query, pageable))
         );
     }
 }

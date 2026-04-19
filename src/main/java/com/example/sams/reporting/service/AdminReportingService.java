@@ -20,6 +20,8 @@ import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
 import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
 import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
+import com.example.sams.reporting.dto.TeacherWorkloadReportResponse;
+import com.example.sams.user.domain.Teacher;
 import com.example.sams.user.domain.Student;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
@@ -230,6 +232,20 @@ public class AdminReportingService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public Page<TeacherWorkloadReportResponse> getTeacherWorkloads(Long departmentId, Long termId, String query, Pageable pageable) {
+        List<TeacherWorkloadReportResponse> content = teacherRepository.search(departmentId, normalize(query), Pageable.unpaged())
+                .stream()
+                .map(teacher -> buildTeacherWorkload(teacher, termId))
+                .filter(report -> termId == null || report.totalOfferings() > 0)
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), content.size());
+        List<TeacherWorkloadReportResponse> pageContent = start >= content.size() ? List.of() : content.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, content.size());
+    }
+
     private FeeDefaulterReportResponse toFeeDefaulterResponse(SemesterFee semesterFee) {
         BigDecimal outstandingAmount = semesterFee.getTotalPayable()
                 .subtract(semesterFee.getPaidAmount())
@@ -283,5 +299,53 @@ public class AdminReportingService {
                 .map(StudentResultHistoryResponse::totalWeightedScore)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .divide(BigDecimal.valueOf(results.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    private TeacherWorkloadReportResponse buildTeacherWorkload(Teacher teacher, Long termId) {
+        List<com.example.sams.offering.domain.CourseOffering> offerings = courseOfferingRepository.findAllByTeacherId(teacher.getId()).stream()
+                .filter(offering -> termId == null || offering.getTerm().getId().equals(termId))
+                .toList();
+
+        long openOfferings = offerings.stream()
+                .filter(offering -> offering.getStatus() == com.example.sams.offering.domain.CourseOfferingStatus.OPEN)
+                .count();
+        long closedOfferings = offerings.stream()
+                .filter(offering -> offering.getStatus() == com.example.sams.offering.domain.CourseOfferingStatus.CLOSED)
+                .count();
+        long archivedOfferings = offerings.stream()
+                .filter(offering -> offering.getStatus() == com.example.sams.offering.domain.CourseOfferingStatus.ARCHIVED)
+                .count();
+        long totalAssignedStudents = offerings.stream()
+                .mapToLong(offering -> enrollmentRepository.findAllByCourseOfferingIdAndStatus(offering.getId(), EnrollmentStatus.ENROLLED).size())
+                .sum();
+        long publishedExamCount = offerings.stream()
+                .mapToLong(offering -> examRepository.findAllByCourseOfferingIdAndPublishedTrue(offering.getId()).size())
+                .sum();
+        int totalCapacity = offerings.stream()
+                .map(com.example.sams.offering.domain.CourseOffering::getCapacity)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal averageCapacityUtilization = totalCapacity == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(totalAssignedStudents)
+                        .multiply(new BigDecimal("100"))
+                        .divide(BigDecimal.valueOf(totalCapacity), 2, RoundingMode.HALF_UP);
+
+        return new TeacherWorkloadReportResponse(
+                teacher.getId(),
+                teacher.getEmployeeCode(),
+                teacher.getUser().getUsername(),
+                teacher.getUser().getEmail(),
+                teacher.getDepartment().getName(),
+                teacher.getDesignation(),
+                offerings.size(),
+                openOfferings,
+                closedOfferings,
+                archivedOfferings,
+                totalAssignedStudents,
+                publishedExamCount,
+                averageCapacityUtilization
+        );
     }
 }
