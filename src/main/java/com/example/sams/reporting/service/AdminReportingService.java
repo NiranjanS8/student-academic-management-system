@@ -5,7 +5,12 @@ import com.example.sams.common.api.PageResponse;
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
+import com.example.sams.exam.domain.MarkEntry;
+import com.example.sams.exam.dto.StudentResultHistoryResponse;
+import com.example.sams.exam.dto.StudentResultSummaryResponse;
 import com.example.sams.exam.repository.ExamRepository;
+import com.example.sams.exam.repository.MarkEntryRepository;
+import com.example.sams.exam.service.ResultCalculationService;
 import com.example.sams.fee.domain.SemesterFee;
 import com.example.sams.fee.repository.SemesterFeeRepository;
 import com.example.sams.fee.service.FeePolicyService;
@@ -13,6 +18,9 @@ import com.example.sams.offering.repository.CourseOfferingRepository;
 import com.example.sams.reporting.dto.AdminDashboardSummaryResponse;
 import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
+import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
+import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
+import com.example.sams.user.domain.Student;
 import com.example.sams.user.repository.StudentRepository;
 import com.example.sams.user.repository.TeacherRepository;
 import java.math.BigDecimal;
@@ -33,6 +41,8 @@ public class AdminReportingService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final ExamRepository examRepository;
+    private final MarkEntryRepository markEntryRepository;
+    private final ResultCalculationService resultCalculationService;
     private final SemesterFeeRepository semesterFeeRepository;
     private final FeePolicyService feePolicyService;
     private final AttendanceAnalyticsService attendanceAnalyticsService;
@@ -44,6 +54,8 @@ public class AdminReportingService {
             CourseOfferingRepository courseOfferingRepository,
             EnrollmentRepository enrollmentRepository,
             ExamRepository examRepository,
+            MarkEntryRepository markEntryRepository,
+            ResultCalculationService resultCalculationService,
             SemesterFeeRepository semesterFeeRepository,
             FeePolicyService feePolicyService,
             AttendanceAnalyticsService attendanceAnalyticsService,
@@ -54,6 +66,8 @@ public class AdminReportingService {
         this.courseOfferingRepository = courseOfferingRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.examRepository = examRepository;
+        this.markEntryRepository = markEntryRepository;
+        this.resultCalculationService = resultCalculationService;
         this.semesterFeeRepository = semesterFeeRepository;
         this.feePolicyService = feePolicyService;
         this.attendanceAnalyticsService = attendanceAnalyticsService;
@@ -134,6 +148,88 @@ public class AdminReportingService {
         return new PageImpl<>(pageContent, pageable, content.size());
     }
 
+    @Transactional(readOnly = true)
+    public PublishedResultSummaryResponse getPublishedResultSummary(Long termId, Long courseOfferingId) {
+        List<Enrollment> enrollments = enrollmentRepository
+                .findAdminPublishedResultEnrollments(null, termId, courseOfferingId, Pageable.unpaged())
+                .getContent();
+
+        List<StudentResultHistoryResponse> courseResults = enrollments.stream()
+                .map(this::toCourseResult)
+                .toList();
+
+        long finalResultsCount = courseResults.stream()
+                .filter(result -> "FINAL".equals(result.resultStatus()))
+                .count();
+        long partialResultsCount = courseResults.size() - finalResultsCount;
+        BigDecimal averageWeightedScore = averageWeightedScore(courseResults);
+
+        List<PublishedResultSummaryResponse.OfferingResultSummary> offerings = courseResults.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        StudentResultHistoryResponse::courseOfferingId,
+                        java.util.LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()
+                ))
+                .values()
+                .stream()
+                .map(results -> {
+                    StudentResultHistoryResponse anchor = results.get(0);
+                    long publishedExamCount = results.stream()
+                            .flatMap(result -> result.publishedExams().stream())
+                            .map(StudentResultHistoryResponse.PublishedExamResult::examId)
+                            .distinct()
+                            .count();
+                    return new PublishedResultSummaryResponse.OfferingResultSummary(
+                            anchor.courseOfferingId(),
+                            anchor.termId(),
+                            anchor.termName(),
+                            anchor.academicYear(),
+                            anchor.subjectCode(),
+                            anchor.subjectName(),
+                            publishedExamCount,
+                            enrollments.stream().filter(enrollment -> enrollment.getCourseOffering().getId().equals(anchor.courseOfferingId())).count(),
+                            results.size(),
+                            results.stream().filter(result -> "FINAL".equals(result.resultStatus())).count(),
+                            averageWeightedScore(results)
+                    );
+                })
+                .toList();
+
+        return new PublishedResultSummaryResponse(
+                offerings.stream().mapToLong(PublishedResultSummaryResponse.OfferingResultSummary::publishedExamCount).sum(),
+                offerings.size(),
+                finalResultsCount,
+                partialResultsCount,
+                averageWeightedScore,
+                offerings
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public StudentAcademicSnapshotResponse getStudentAcademicSnapshot(Long studentId) {
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new com.example.sams.common.exception.ResourceNotFoundException("Student not found"));
+
+        List<StudentResultHistoryResponse> publishedResults = enrollmentRepository
+                .findAdminPublishedResultEnrollments(studentId, null, null, Pageable.unpaged())
+                .stream()
+                .map(this::toCourseResult)
+                .toList();
+
+        StudentResultSummaryResponse summary = resultCalculationService.buildSummary(publishedResults);
+
+        return new StudentAcademicSnapshotResponse(
+                student.getId(),
+                student.getStudentCode(),
+                student.getUser().getUsername(),
+                student.getProgram().getName(),
+                student.getSection() == null ? null : student.getSection().getName(),
+                student.getCurrentTerm() == null ? null : student.getCurrentTerm().getName(),
+                summary,
+                publishedResults
+        );
+    }
+
     private FeeDefaulterReportResponse toFeeDefaulterResponse(SemesterFee semesterFee) {
         BigDecimal outstandingAmount = semesterFee.getTotalPayable()
                 .subtract(semesterFee.getPaidAmount())
@@ -169,5 +265,23 @@ public class AdminReportingService {
 
     private String normalize(String query) {
         return query == null || query.isBlank() ? null : query.trim();
+    }
+
+    private StudentResultHistoryResponse toCourseResult(Enrollment enrollment) {
+        List<MarkEntry> publishedMarkEntries = markEntryRepository.findAllByStudentIdAndExamCourseOfferingIdAndExamPublishedTrue(
+                enrollment.getStudent().getId(),
+                enrollment.getCourseOffering().getId()
+        );
+        return resultCalculationService.buildCourseResult(enrollment, publishedMarkEntries);
+    }
+
+    private BigDecimal averageWeightedScore(List<StudentResultHistoryResponse> results) {
+        if (results.isEmpty()) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return results.stream()
+                .map(StudentResultHistoryResponse::totalWeightedScore)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(results.size()), 2, RoundingMode.HALF_UP);
     }
 }

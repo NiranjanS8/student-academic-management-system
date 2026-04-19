@@ -21,6 +21,7 @@ import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
 import com.example.sams.enrollment.repository.EnrollmentRepository;
 import com.example.sams.exam.domain.Exam;
+import com.example.sams.exam.domain.MarkEntry;
 import com.example.sams.exam.repository.ExamRepository;
 import com.example.sams.exam.repository.MarkEntryRepository;
 import com.example.sams.fee.domain.SemesterFee;
@@ -135,6 +136,9 @@ class AdminReportingIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private com.example.sams.exam.service.GradeCalculationService gradeCalculationService;
+
     private Program program;
     private Section section;
     private AcademicTerm term;
@@ -203,7 +207,7 @@ class AdminReportingIntegrationTest {
         student = createStudent(department);
         offering = createOffering(subject);
         createEnrollment();
-        createPublishedExam();
+        createPublishedExamWithMarks();
         createOutstandingFee();
         createLowAttendance();
     }
@@ -242,6 +246,25 @@ class AdminReportingIntegrationTest {
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.content[0].studentCode").value("STU-REP-1"))
                 .andExpect(jsonPath("$.data.content[0].attendancePercentage").value(33.33));
+
+        mockMvc.perform(get("/api/v1/admin/reports/results-summary")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("termId", String.valueOf(term.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.publishedExamCount").value(1))
+                .andExpect(jsonPath("$.data.offeringsWithPublishedResults").value(1))
+                .andExpect(jsonPath("$.data.finalResultsCount").value(1))
+                .andExpect(jsonPath("$.data.averageWeightedScore").value(84.00))
+                .andExpect(jsonPath("$.data.offerings[0].subjectCode").value("SE601"));
+
+        mockMvc.perform(get("/api/v1/admin/reports/students/{studentId}/academic-snapshot", student.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.studentCode").value("STU-REP-1"))
+                .andExpect(jsonPath("$.data.summary.cgpa").value(3.70))
+                .andExpect(jsonPath("$.data.summary.totalCompletedCredits").value(3.00))
+                .andExpect(jsonPath("$.data.publishedResults[0].subjectCode").value("SE601"))
+                .andExpect(jsonPath("$.data.publishedResults[0].resultStatus").value("FINAL"));
     }
 
     private void createAdmin() {
@@ -318,17 +341,32 @@ class AdminReportingIntegrationTest {
         enrollmentRepository.save(enrollment);
     }
 
-    private void createPublishedExam() {
+    private void createPublishedExamWithMarks() {
         Exam exam = new Exam();
         exam.setCourseOffering(offering);
         exam.setTitle("Midterm");
         exam.setExamType("THEORY");
         exam.setMaxMarks(new BigDecimal("100.00"));
-        exam.setWeightage(new BigDecimal("40.00"));
+        exam.setWeightage(new BigDecimal("100.00"));
         exam.setScheduledAt(Instant.parse("2026-07-10T10:00:00Z"));
         exam.setPublished(true);
         exam.setPublishedAt(Instant.now());
         examRepository.save(exam);
+
+        MarkEntry markEntry = new MarkEntry();
+        markEntry.setExam(exam);
+        markEntry.setStudent(student);
+        markEntry.setMarksObtained(new BigDecimal("84.00"));
+        com.example.sams.exam.service.GradeCalculationService.GradeSnapshot grade = gradeCalculationService.calculate(
+                new BigDecimal("84.00"),
+                new BigDecimal("100.00"),
+                new BigDecimal("100.00")
+        );
+        markEntry.setPercentageScore(grade.percentageScore());
+        markEntry.setWeightedScore(grade.weightedScore());
+        markEntry.setLetterGrade(grade.letterGrade());
+        markEntry.setGradePoints(grade.gradePoints());
+        markEntryRepository.save(markEntry);
     }
 
     private void createOutstandingFee() {

@@ -6,6 +6,8 @@ import com.example.sams.common.api.PaginationUtils;
 import com.example.sams.reporting.dto.AdminDashboardSummaryResponse;
 import com.example.sams.reporting.dto.AttendanceShortageReportResponse;
 import com.example.sams.reporting.dto.FeeDefaulterReportResponse;
+import com.example.sams.reporting.dto.PublishedResultSummaryResponse;
+import com.example.sams.reporting.dto.StudentAcademicSnapshotResponse;
 import com.example.sams.reporting.service.AdminReportingService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +63,25 @@ public class AdminReportingController {
         return ApiResponse.success(
                 "Attendance shortage report fetched successfully",
                 PageResponse.from(adminReportingService.getAttendanceShortages(termId, programId, sectionId, query, pageable))
+        );
+    }
+
+    @GetMapping("/results-summary")
+    public ApiResponse<PublishedResultSummaryResponse> getPublishedResultSummary(
+            @RequestParam(required = false) Long termId,
+            @RequestParam(required = false) Long courseOfferingId
+    ) {
+        return ApiResponse.success(
+                "Published result summary fetched successfully",
+                adminReportingService.getPublishedResultSummary(termId, courseOfferingId)
+        );
+    }
+
+    @GetMapping("/students/{studentId}/academic-snapshot")
+    public ApiResponse<StudentAcademicSnapshotResponse> getStudentAcademicSnapshot(@org.springframework.web.bind.annotation.PathVariable Long studentId) {
+        return ApiResponse.success(
+                "Student academic snapshot fetched successfully",
+                adminReportingService.getStudentAcademicSnapshot(studentId)
         );
     }
 }

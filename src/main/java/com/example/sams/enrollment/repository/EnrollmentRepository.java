@@ -68,4 +68,20 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             @Param("termId") Long termId,
             Pageable pageable
     );
+
+    @Query("""
+            select distinct e from Enrollment e
+            join e.courseOffering co
+            join Exam exam on exam.courseOffering = co
+            where (:studentId is null or e.student.id = :studentId)
+              and (:termId is null or co.term.id = :termId)
+              and (:courseOfferingId is null or co.id = :courseOfferingId)
+              and exam.published = true
+            """)
+    Page<Enrollment> findAdminPublishedResultEnrollments(
+            @Param("studentId") Long studentId,
+            @Param("termId") Long termId,
+            @Param("courseOfferingId") Long courseOfferingId,
+            Pageable pageable
+    );
 }
