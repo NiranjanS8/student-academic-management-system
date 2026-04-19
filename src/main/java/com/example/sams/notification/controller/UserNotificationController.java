@@ -3,6 +3,7 @@ package com.example.sams.notification.controller;
 import com.example.sams.common.api.ApiResponse;
 import com.example.sams.common.api.PageResponse;
 import com.example.sams.common.api.PaginationUtils;
+import com.example.sams.notification.dto.NotificationBulkActionResponse;
 import com.example.sams.notification.dto.NotificationResponse;
 import com.example.sams.notification.dto.UnreadNotificationCountResponse;
 import com.example.sams.notification.service.NotificationService;
@@ -47,5 +48,15 @@ public class UserNotificationController {
     @PostMapping("/{notificationId}/read")
     public ApiResponse<NotificationResponse> markAsRead(@PathVariable Long notificationId) {
         return ApiResponse.success("Notification marked as read", notificationService.markAsRead(notificationId));
+    }
+
+    @PostMapping("/{notificationId}/unread")
+    public ApiResponse<NotificationResponse> markAsUnread(@PathVariable Long notificationId) {
+        return ApiResponse.success("Notification marked as unread", notificationService.markAsUnread(notificationId));
+    }
+
+    @PostMapping("/me/read-all")
+    public ApiResponse<NotificationBulkActionResponse> markAllAsRead() {
+        return ApiResponse.success("All notifications marked as read", notificationService.markAllAsRead());
     }
 }

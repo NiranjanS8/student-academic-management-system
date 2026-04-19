@@ -21,5 +21,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     List<Notification> findAllByTypeAndReadFalseAndCreatedAtBefore(NotificationType type, Instant createdAt);
 
+    List<Notification> findAllByUserIdAndReadFalse(Long userId);
+
+    long deleteByReadTrueAndReadAtBefore(Instant cutoff);
+
     long countByUserIdAndReadFalse(Long userId);
 }

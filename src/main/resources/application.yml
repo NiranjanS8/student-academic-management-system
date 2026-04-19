@@ -55,6 +55,9 @@ sams:
     fee-reminder:
       cron: ${FEE_REMINDER_CRON:0 0 9 * * *}
       upcoming-days: ${FEE_REMINDER_UPCOMING_DAYS:3}
+    notification-cleanup:
+      cron: ${NOTIFICATION_CLEANUP_CRON:0 0 3 * * *}
+      retention-days: ${NOTIFICATION_CLEANUP_RETENTION_DAYS:30}
     result-reminder:
       cron: ${RESULT_REMINDER_CRON:0 30 9 * * *}
       delay-days: ${RESULT_REMINDER_DELAY_DAYS:1}

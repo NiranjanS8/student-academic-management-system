@@ -26,6 +26,9 @@ sams:
     fee-reminder:
       cron: "0 0 9 * * *"
       upcoming-days: 3
+    notification-cleanup:
+      cron: "0 0 3 * * *"
+      retention-days: 30
     result-reminder:
       cron: "0 30 9 * * *"
       delay-days: 0

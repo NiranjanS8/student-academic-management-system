@@ -10,6 +10,7 @@ import com.example.sams.exam.domain.Exam;
 import com.example.sams.notification.domain.Notification;
 import com.example.sams.notification.domain.NotificationType;
 import com.example.sams.notification.dto.AnnouncementDispatchResponse;
+import com.example.sams.notification.dto.NotificationBulkActionResponse;
 import com.example.sams.notification.dto.NotificationResponse;
 import com.example.sams.notification.dto.TeacherAnnouncementRequest;
 import com.example.sams.notification.dto.UnreadNotificationCountResponse;
@@ -139,12 +140,31 @@ public class NotificationService {
         Notification notification = notificationRepository.findByIdAndUserId(notificationId, getAuthenticatedUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
 
-        if (!notification.isRead()) {
-            notification.setRead(true);
-            notification.setReadAt(Instant.now());
-        }
+        applyReadState(notification, true);
 
         return notificationResponseMapper.toResponse(notification);
+    }
+
+    @Transactional
+    public NotificationResponse markAsUnread(Long notificationId) {
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, getAuthenticatedUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
+
+        applyReadState(notification, false);
+
+        return notificationResponseMapper.toResponse(notification);
+    }
+
+    @Transactional
+    public NotificationBulkActionResponse markAllAsRead() {
+        List<Notification> notifications = notificationRepository.findAllByUserIdAndReadFalse(getAuthenticatedUserId());
+        notifications.forEach(notification -> applyReadState(notification, true));
+        return new NotificationBulkActionResponse(notifications.size());
+    }
+
+    @Transactional
+    public long deleteReadNotificationsBefore(Instant cutoff) {
+        return notificationRepository.deleteByReadTrueAndReadAtBefore(cutoff);
     }
 
     @Transactional
@@ -200,6 +220,11 @@ public class NotificationService {
     public User getAuthenticatedUser() {
         return userRepository.findById(getAuthenticatedUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    private void applyReadState(Notification notification, boolean read) {
+        notification.setRead(read);
+        notification.setReadAt(read ? Instant.now() : null);
     }
 
     private Long getAuthenticatedUserId() {
