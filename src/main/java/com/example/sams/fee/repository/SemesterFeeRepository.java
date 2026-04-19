@@ -49,4 +49,27 @@ public interface SemesterFeeRepository extends JpaRepository<SemesterFee, Long> 
               and sf.dueDate <= :maxDueDate
             """)
     List<SemesterFee> findOutstandingReminderCandidates(@Param("maxDueDate") LocalDate maxDueDate);
+
+    @Query("""
+            select sf from SemesterFee sf
+            join sf.student s
+            join s.user u
+            where sf.totalPayable > sf.paidAmount
+              and (:termId is null or sf.term.id = :termId)
+              and (:programId is null or s.program.id = :programId)
+              and (:sectionId is null or s.section.id = :sectionId)
+              and (
+                    :query is null
+                    or lower(s.studentCode) like lower(concat('%', :query, '%'))
+                    or lower(u.username) like lower(concat('%', :query, '%'))
+                    or lower(u.email) like lower(concat('%', :query, '%'))
+              )
+            """)
+    Page<SemesterFee> searchDefaulters(
+            @Param("termId") Long termId,
+            @Param("programId") Long programId,
+            @Param("sectionId") Long sectionId,
+            @Param("query") String query,
+            Pageable pageable
+    );
 }

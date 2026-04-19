@@ -10,6 +10,8 @@ import java.util.Optional;
 
 public interface ExamRepository extends JpaRepository<Exam, Long> {
 
+    long countByPublishedTrue();
+
     Optional<Exam> findByIdAndCourseOfferingTeacherUserId(Long examId, Long userId);
 
     Page<Exam> findAllByCourseOfferingTeacherUserId(Long userId, Pageable pageable);
