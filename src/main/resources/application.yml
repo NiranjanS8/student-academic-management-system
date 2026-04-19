@@ -46,3 +46,9 @@ springdoc:
 logging:
   level:
     org.flywaydb: info
+
+sams:
+  scheduler:
+    fee-reminder:
+      cron: ${FEE_REMINDER_CRON:0 0 9 * * *}
+      upcoming-days: ${FEE_REMINDER_UPCOMING_DAYS:3}

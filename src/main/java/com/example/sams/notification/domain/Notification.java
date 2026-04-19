@@ -43,6 +43,9 @@ public class Notification extends BaseEntity {
     @Column(nullable = false, length = 500)
     private String message;
 
+    @Column(name = "dedup_key", unique = true, length = 150)
+    private String dedupKey;
+
     @Column(name = "is_read", nullable = false)
     private boolean read;
 

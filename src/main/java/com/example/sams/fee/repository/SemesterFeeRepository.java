@@ -2,6 +2,7 @@ package com.example.sams.fee.repository;
 
 import com.example.sams.fee.domain.SemesterFee;
 import com.example.sams.fee.domain.SemesterFeeStatus;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -41,4 +42,11 @@ public interface SemesterFeeRepository extends JpaRepository<SemesterFee, Long> 
     );
 
     List<SemesterFee> findAllByStudentId(Long studentId);
+
+    @Query("""
+            select sf from SemesterFee sf
+            where sf.totalPayable > sf.paidAmount
+              and sf.dueDate <= :maxDueDate
+            """)
+    List<SemesterFee> findOutstandingReminderCandidates(@Param("maxDueDate") LocalDate maxDueDate);
 }

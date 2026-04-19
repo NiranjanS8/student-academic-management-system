@@ -17,3 +17,9 @@ security:
     secret: test-secret-key-with-at-least-32-bytes-long-value
     access-token-expiration-minutes: 60
     refresh-token-expiration-days: 7
+
+sams:
+  scheduler:
+    fee-reminder:
+      cron: "0 0 9 * * *"
+      upcoming-days: 3

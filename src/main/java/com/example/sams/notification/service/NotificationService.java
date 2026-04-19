@@ -149,30 +149,51 @@ public class NotificationService {
 
     @Transactional
     public void createNotification(User user, NotificationType type, String title, String message) {
+        createNotification(user, type, title, message, null);
+    }
+
+    @Transactional
+    public void createNotification(User user, NotificationType type, String title, String message, String dedupKey) {
+        if (dedupKey != null && notificationRepository.existsByDedupKey(dedupKey)) {
+            return;
+        }
+
         Notification notification = new Notification();
         notification.setUser(user);
         notification.setType(type);
         notification.setTitle(title);
         notification.setMessage(message);
+        notification.setDedupKey(dedupKey);
         notification.setRead(false);
         notificationRepository.save(notification);
     }
 
     @Transactional
     public void createNotifications(List<User> users, NotificationType type, String title, String message) {
+        createNotifications(users, type, title, message, null);
+    }
+
+    @Transactional
+    public void createNotifications(List<User> users, NotificationType type, String title, String message, java.util.function.Function<User, String> dedupKeyFactory) {
         List<Notification> notifications = users.stream()
                 .distinct()
+                .filter(user -> dedupKeyFactory == null || !notificationRepository.existsByDedupKey(dedupKeyFactory.apply(user)))
                 .map(user -> {
                     Notification notification = new Notification();
                     notification.setUser(user);
                     notification.setType(type);
                     notification.setTitle(title);
                     notification.setMessage(message);
+                    if (dedupKeyFactory != null) {
+                        notification.setDedupKey(dedupKeyFactory.apply(user));
+                    }
                     notification.setRead(false);
                     return notification;
                 })
                 .toList();
-        notificationRepository.saveAll(notifications);
+        if (!notifications.isEmpty()) {
+            notificationRepository.saveAll(notifications);
+        }
     }
 
     @Transactional(readOnly = true)
