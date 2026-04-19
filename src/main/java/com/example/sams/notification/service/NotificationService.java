@@ -23,7 +23,9 @@ import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.UserRepository;
 import com.example.sams.user.service.AppUserDetails;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -210,17 +212,25 @@ public class NotificationService {
 
     @Transactional
     public void createNotifications(List<User> users, NotificationType type, String title, String message, java.util.function.Function<User, String> dedupKeyFactory) {
-        List<Notification> notifications = users.stream()
-                .distinct()
-                .filter(user -> dedupKeyFactory == null || !notificationRepository.existsByDedupKey(dedupKeyFactory.apply(user)))
-                .map(user -> {
+        List<User> distinctUsers = users.stream().distinct().toList();
+        Set<String> existingDedupKeys = dedupKeyFactory == null
+                ? Set.of()
+                : new LinkedHashSet<>(notificationRepository.findExistingDedupKeys(distinctUsers.stream()
+                        .map(dedupKeyFactory)
+                        .filter(java.util.Objects::nonNull)
+                        .toList()));
+
+        List<Notification> notifications = distinctUsers.stream()
+                .map(user -> new java.util.AbstractMap.SimpleEntry<>(user, dedupKeyFactory == null ? null : dedupKeyFactory.apply(user)))
+                .filter(entry -> entry.getValue() == null || !existingDedupKeys.contains(entry.getValue()))
+                .map(entry -> {
                     Notification notification = new Notification();
-                    notification.setUser(user);
+                    notification.setUser(entry.getKey());
                     notification.setType(type);
                     notification.setTitle(title);
                     notification.setMessage(message);
-                    if (dedupKeyFactory != null) {
-                        notification.setDedupKey(dedupKeyFactory.apply(user));
+                    if (entry.getValue() != null) {
+                        notification.setDedupKey(entry.getValue());
                     }
                     notification.setRead(false);
                     return notification;

@@ -3,8 +3,10 @@ package com.example.sams.notification.service;
 import com.example.sams.attendance.service.AttendanceAnalyticsService;
 import com.example.sams.notification.domain.NotificationType;
 import com.example.sams.notification.repository.NotificationRepository;
+import com.example.sams.user.domain.User;
 import com.example.sams.user.repository.UserRepository;
 import java.math.BigDecimal;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -41,16 +43,23 @@ public class AttendanceShortageSchedulerService {
 
     @Transactional
     public int processAttendanceShortages() {
+        java.util.List<AttendanceAnalyticsService.AttendanceShortageCandidate> candidates =
+                attendanceAnalyticsService.findShortageCandidates(minimumPercentage);
+        Map<Long, User> usersById = userRepository.findAllById(
+                        candidates.stream().map(AttendanceAnalyticsService.AttendanceShortageCandidate::userId).distinct().toList()
+                ).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, user -> user));
+
         int sentCount = 0;
         for (AttendanceAnalyticsService.AttendanceShortageCandidate candidate
-                : attendanceAnalyticsService.findShortageCandidates(minimumPercentage)) {
+                : candidates) {
             String dedupKey = "attendance-shortage:%d:%d".formatted(candidate.courseOfferingId(), candidate.studentId());
             if (notificationRepository.existsByDedupKey(dedupKey)) {
                 continue;
             }
 
             notificationService.createNotification(
-                    userRepository.findById(candidate.userId()).orElseThrow(),
+                    java.util.Optional.ofNullable(usersById.get(candidate.userId())).orElseThrow(),
                     NotificationType.ATTENDANCE_WARNING,
                     "Low attendance warning",
                     "Your attendance in %s - %s is %s%% (%d/%d sessions), below the required %s%%."

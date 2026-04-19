@@ -3,6 +3,7 @@ package com.example.sams.audit.service;
 import com.example.sams.audit.domain.AuditActionType;
 import com.example.sams.audit.domain.AuditLog;
 import com.example.sams.audit.dto.AuditLogResponse;
+import com.example.sams.audit.projection.AuditLogView;
 import com.example.sams.audit.repository.AuditLogRepository;
 import com.example.sams.common.exception.ConflictException;
 import com.example.sams.user.service.AppUserDetails;
@@ -65,7 +66,7 @@ public class AuditLogService {
         String normalizedEntityId = normalize(entityId);
         validateDateRange(createdFrom, createdTo);
 
-        return auditLogRepository.search(
+        return auditLogRepository.searchView(
                         parsedActionType,
                         actorUserId,
                         normalizedEntityType,
@@ -114,10 +115,10 @@ public class AuditLogService {
         return builder.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private AuditLogResponse toResponse(AuditLog auditLog) {
+    private AuditLogResponse toResponse(AuditLogView auditLog) {
         return new AuditLogResponse(
                 auditLog.getId(),
-                auditLog.getActionType().name(),
+                auditLog.getActionType(),
                 auditLog.getActorUserId(),
                 auditLog.getActorUsername(),
                 auditLog.getActorRole(),

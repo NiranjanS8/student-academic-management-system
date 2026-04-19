@@ -18,4 +18,9 @@ public interface MarkEntryRepository extends JpaRepository<MarkEntry, Long> {
     long countByExamId(Long examId);
 
     List<MarkEntry> findAllByStudentIdAndExamCourseOfferingIdAndExamPublishedTrue(Long studentId, Long courseOfferingId);
+
+    List<MarkEntry> findAllByStudentIdInAndExamCourseOfferingIdInAndExamPublishedTrue(
+            List<Long> studentIds,
+            List<Long> courseOfferingIds
+    );
 }

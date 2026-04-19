@@ -3,11 +3,14 @@ package com.example.sams.notification.repository;
 import com.example.sams.notification.domain.Notification;
 import com.example.sams.notification.domain.NotificationType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
@@ -18,6 +21,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     Optional<Notification> findByIdAndUserId(Long notificationId, Long userId);
 
     boolean existsByDedupKey(String dedupKey);
+
+    @Query("select n.dedupKey from Notification n where n.dedupKey in :dedupKeys")
+    List<String> findExistingDedupKeys(@Param("dedupKeys") Collection<String> dedupKeys);
 
     List<Notification> findAllByTypeAndReadFalseAndCreatedAtBefore(NotificationType type, Instant createdAt);
 

@@ -2,6 +2,8 @@ package com.example.sams.enrollment.repository;
 
 import com.example.sams.enrollment.domain.Enrollment;
 import com.example.sams.enrollment.domain.EnrollmentStatus;
+import com.example.sams.reporting.projection.AttendanceShortageReportProjection;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -83,5 +85,121 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             @Param("termId") Long termId,
             @Param("courseOfferingId") Long courseOfferingId,
             Pageable pageable
+    );
+
+    @Query(value = """
+            select *
+            from (
+              select
+                u.id as userId,
+                s.id as studentId,
+                s.student_code as studentCode,
+                u.username as studentUsername,
+                co.id as courseOfferingId,
+                subj.code as subjectCode,
+                subj.name as subjectName,
+                count(ar.id) as totalSessions,
+                sum(case when ar.status = 'PRESENT' then 1 else 0 end) as presentSessions,
+                round(sum(case when ar.status = 'PRESENT' then 1 else 0 end) * 100.0 / count(ar.id), 2) as attendancePercentage
+              from enrollments e
+              join students s on s.id = e.student_id
+              join users u on u.id = s.user_id
+              join course_offerings co on co.id = e.course_offering_id
+              join subjects subj on subj.id = co.subject_id
+              left join attendance_sessions ats on ats.course_offering_id = co.id
+              left join attendance_records ar on ar.attendance_session_id = ats.id and ar.student_id = s.id
+              where e.status = 'ENROLLED'
+                and (:termId is null or co.term_id = :termId)
+                and (:programId is null or s.program_id = :programId)
+                and (:sectionId is null or s.section_id = :sectionId)
+                and (
+                      :query is null
+                      or lower(s.student_code) like lower(concat('%', :query, '%'))
+                      or lower(u.username) like lower(concat('%', :query, '%'))
+                      or lower(u.email) like lower(concat('%', :query, '%'))
+                      or lower(subj.code) like lower(concat('%', :query, '%'))
+                      or lower(subj.name) like lower(concat('%', :query, '%'))
+                )
+              group by u.id, s.id, s.student_code, u.username, co.id, subj.code, subj.name
+              having count(ar.id) > 0
+                 and (sum(case when ar.status = 'PRESENT' then 1 else 0 end) * 100.0 / count(ar.id)) < :minimumPercentage
+            ) shortage_rows
+            order by
+              case when :sortBy = 'studentCode' and :direction = 'asc' then studentCode end asc,
+              case when :sortBy = 'studentCode' and :direction = 'desc' then studentCode end desc,
+              case when :sortBy = 'studentUsername' and :direction = 'asc' then studentUsername end asc,
+              case when :sortBy = 'studentUsername' and :direction = 'desc' then studentUsername end desc,
+              case when :sortBy = 'subjectCode' and :direction = 'asc' then subjectCode end asc,
+              case when :sortBy = 'subjectCode' and :direction = 'desc' then subjectCode end desc,
+              case when :sortBy = 'attendancePercentage' and :direction = 'asc' then attendancePercentage end asc,
+              case when :sortBy = 'attendancePercentage' and :direction = 'desc' then attendancePercentage end desc,
+              case when :sortBy = 'studentId' and :direction = 'desc' then studentId end desc,
+              studentId asc
+            """, countQuery = """
+            select count(*)
+            from (
+              select s.id, co.id
+              from enrollments e
+              join students s on s.id = e.student_id
+              join users u on u.id = s.user_id
+              join course_offerings co on co.id = e.course_offering_id
+              join subjects subj on subj.id = co.subject_id
+              left join attendance_sessions ats on ats.course_offering_id = co.id
+              left join attendance_records ar on ar.attendance_session_id = ats.id and ar.student_id = s.id
+              where e.status = 'ENROLLED'
+                and (:termId is null or co.term_id = :termId)
+                and (:programId is null or s.program_id = :programId)
+                and (:sectionId is null or s.section_id = :sectionId)
+                and (
+                      :query is null
+                      or lower(s.student_code) like lower(concat('%', :query, '%'))
+                      or lower(u.username) like lower(concat('%', :query, '%'))
+                      or lower(u.email) like lower(concat('%', :query, '%'))
+                      or lower(subj.code) like lower(concat('%', :query, '%'))
+                      or lower(subj.name) like lower(concat('%', :query, '%'))
+                )
+              group by s.id, co.id
+              having count(ar.id) > 0
+                 and (sum(case when ar.status = 'PRESENT' then 1 else 0 end) * 100.0 / count(ar.id)) < :minimumPercentage
+            ) shortage_count_rows
+            """, nativeQuery = true)
+    Page<AttendanceShortageReportProjection> findAttendanceShortageReports(
+            @Param("termId") Long termId,
+            @Param("programId") Long programId,
+            @Param("sectionId") Long sectionId,
+            @Param("query") String query,
+            @Param("minimumPercentage") BigDecimal minimumPercentage,
+            @Param("sortBy") String sortBy,
+            @Param("direction") String direction,
+            Pageable pageable
+    );
+
+    @Query(value = """
+            select
+              u.id as userId,
+              s.id as studentId,
+              s.student_code as studentCode,
+              u.username as studentUsername,
+              co.id as courseOfferingId,
+              subj.code as subjectCode,
+              subj.name as subjectName,
+              count(ar.id) as totalSessions,
+              sum(case when ar.status = 'PRESENT' then 1 else 0 end) as presentSessions,
+              round(sum(case when ar.status = 'PRESENT' then 1 else 0 end) * 100.0 / count(ar.id), 2) as attendancePercentage
+            from enrollments e
+            join students s on s.id = e.student_id
+            join users u on u.id = s.user_id
+            join course_offerings co on co.id = e.course_offering_id
+            join subjects subj on subj.id = co.subject_id
+            left join attendance_sessions ats on ats.course_offering_id = co.id
+            left join attendance_records ar on ar.attendance_session_id = ats.id and ar.student_id = s.id
+            where e.status = 'ENROLLED'
+            group by u.id, s.id, s.student_code, u.username, co.id, subj.code, subj.name
+            having count(ar.id) > 0
+               and (sum(case when ar.status = 'PRESENT' then 1 else 0 end) * 100.0 / count(ar.id)) < :minimumPercentage
+            order by s.id asc, co.id asc
+            """, nativeQuery = true)
+    List<AttendanceShortageReportProjection> findAttendanceShortageCandidates(
+            @Param("minimumPercentage") BigDecimal minimumPercentage
     );
 }
