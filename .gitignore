@@ -8,7 +8,7 @@ target/
 
 # VS Code
 .vscode/
-
+.agent/
 # Eclipse
 .classpath
 .project
@@ -36,5 +36,12 @@ temp/
 # Build outputs
 out/
 build/
+frontend/dist/
+frontend/node_modules/
 
 PROJECT_CONTEXT.md
+
+graphify-out/
+
+# Project notes and generated documentation
+docs/
